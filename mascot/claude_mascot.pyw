@@ -1,7 +1,7 @@
 # Claude Mascot: 바탕화면에 SD 캐릭터를 띄워 Claude 상태와 사용량에 반응한다 (Windows 전용).
 # 데이터: ~/.claude/claude-status/usage-<계정>.json (Claude Code 플러그인 usage-status-bridge 가 쓴다, 없으면 상태만), status.claude.com 공개 API.
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
-# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/숨기기/완전히 종료).
+# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/숨기기/완전히 종료).
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
@@ -61,10 +61,12 @@ WALK_DISTANCE = (60, 200)  # 한 번에 걷는 거리(px) 범위
 WALK_TICK_MS = 180  # 이 간격마다 한 프레임·WALK_STEP px (그림 보폭에 맞춘 값: 작으면 발이 미끄러져 보인다)
 WALK_STEP = 10
 IMAGE_NAMES = ("idle_1", "idle_2", "idle_3", "idle_4", "talk", "sick", "maintenance", "tired", "pet", "sleep", "birthday", "goodnight",
-               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4") + WALK_FRAMES
+               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4", "drag") + WALK_FRAMES
 # 그림이 없으면 같은 캐릭터의 이 그림으로 (사용자 캐릭터에 다른 캐릭터가 섞여 보이지 않게, 걷는 그림이 없으면 idle_1 로 미끄러지듯)
 FALLBACK_IMAGES = {"sick_pet": "sick", "sick_ice_1": "sick", "sick_ice_2": "sick", "sick_ice_3": "sick", "sick_ice_4": "sick",
-                   **{name: "idle_1" for name in WALK_FRAMES}}
+                   "drag": "idle_1", **{name: "idle_1" for name in WALK_FRAMES}}
+# 끌기: drag 그림의 후드 뒷덜미 위치(그림 너비·높이 비율). 어디를 눌렀든 이 점이 커서 아래로 와서 뒷덜미를 집어 든 것처럼 보인다
+DRAG_ANCHOR = (0.5, 0.08)
 # 아플 때 쓰다듬기: 보통은 sick_pet + 한마디, ICE_CHANCE 확률로 얼음주머니 갈아주기 애니메이션(그림, 보여 줄 ms)
 SICK_PET_LINES = ("아프지만… 기분 좋아요", "헤헤… 조금 나아졌어요")
 ICE_CHANCE = 1 / 3
@@ -313,6 +315,7 @@ class Mascot:
         self.status = None  # summary.json, 조회 실패 시 None
         self.shown = None
         self.press = None
+        self.dragging = False  # 누른 채 CLICK_SLOP 넘게 움직였으면 끌기(drag 그림)
         self.bubble = None
         self.menu_open = False
         self.state = "ok"  # 마지막으로 받은 서비스 상태: ok / maintenance / down (알림 판정용)
@@ -385,10 +388,13 @@ class Mascot:
 
     # 그리기
     def current(self):
-        # 우선순위: 잘자요 > 아플 때 쓰다듬기(얼음주머니·sick_pet) > 장애·점검·피곤 > 걷기 > 쓰다듬기 > 생일 축하 말풍선 > 말하기 > 잠 > 생일 > 평상시
+        # 우선순위: 잘자요 > 끌기 > 아플 때 쓰다듬기(얼음주머니·sick_pet) > 장애·점검·피곤 > 걷기 > 쓰다듬기 > 생일 축하 말풍선 > 말하기 > 잠 > 생일 > 평상시
         # 장애·점검·피곤 이미지는 말하는 중에도 유지한다: 아픈 모습이 바로 보여야 직관적이다. talk 는 평상시에 말할 때만
+        # 끌기는 아플 때도 drag: 들려 가는 동안은 어미 고양이에게 물린 새끼처럼 평온한 얼굴로 보인다
         if self.closing:
             return "goodnight"
+        if self.dragging:
+            return "drag"
         mood = pick_mood(self.status["status"]["indicator"] if self.status else None, load_accounts(), datetime.datetime.now(datetime.timezone.utc))
         if mood == "sick" and self.petting:
             return self.ice_frame or "sick_pet"
@@ -717,31 +723,39 @@ class Mascot:
         self.save_config(x=self.x, y=self.y)
         self.show()
 
-    # 조작: 조금만 움직이고 떼면 클릭(말하기), 그 이상이면 끌기(이동)
+    # 조작: 조금만 움직이고 떼면 클릭(말하기), 그 이상이면 끌기(이동, 뒷덜미를 잡힌 drag 그림)
     def on_press(self, event):
         self.stop_walk()
         self.last_touch = time.monotonic()
-        self.press = (event.x_root, event.y_root, self.x, self.y)
+        self.press = (event.x_root, event.y_root)
 
     def on_drag(self, event):
         if self.press is None:
             return
-        sx, sy, wx, wy = self.press
-        self.x, self.y = wx + event.x_root - sx, wy + event.y_root - sy
+        sx, sy = self.press
+        if not self.dragging:
+            if abs(event.x_root - sx) <= CLICK_SLOP and abs(event.y_root - sy) <= CLICK_SLOP:
+                return
+            self.dragging = True
+        image = self.images["drag"]
+        self.x = event.x_root - round(image.width * DRAG_ANCHOR[0])
+        self.y = event.y_root - round(HEIGHT * DRAG_ANCHOR[1])
         self.root.geometry(f"+{self.x}+{self.y}")
+        self.show()
 
     def on_release(self, event):
         if self.press is None:
             return
-        sx, sy, _, _ = self.press
         self.press = None
-        if abs(event.x_root - sx) <= CLICK_SLOP and abs(event.y_root - sy) <= CLICK_SLOP:
+        if not self.dragging:
             self.speak_clicked()
             return
+        self.dragging = False
         left, top, right, bottom = self.work_area()
         self.x = max(left, min(self.x, right - self.images["idle_1"].width))
         self.y = max(top, min(self.y, bottom - HEIGHT))
         self.root.geometry(f"+{self.x}+{self.y}")
+        self.show()
         self.save_config(x=self.x, y=self.y)
 
 

@@ -12,7 +12,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 ### 할 수 있는 것
 - **상태 표시**: Claude 장애면 아픈 모습, 점검이면 점검 모습, 사용량이 90% 이상이면 지친 모습으로 바뀝니다. 장애가 나거나 복구되면 스스로 말풍선으로 알려 줍니다.
 - **클릭**: 말풍선으로 계정별 5시간·주간 사용량(사용량 브리지 설치 시)과 장애 내용을 보여 줍니다.
-- **끌기**: 원하는 곳으로 옮깁니다. 위치는 기억합니다.
+- **끌기**: 후드 뒷덜미를 잡혀 들린 채 원하는 곳으로 옮겨집니다. 위치는 기억합니다.
 - **쓰다듬기**: 버튼을 누르지 않은 채 머리 위에서 좌우로 문지르면 좋아합니다. 아플 때 쓰다듬으면 가끔 얼음주머니를 갈아 줍니다.
 - **걷기**: 가만히 두면 가끔 좌우로 몇 걸음 걷습니다. 클릭하면 멈추고, 오른쪽 클릭 → **걷기** 체크를 풀면 걷지 않습니다.
 - **잠들기·인사·생일**: 10분 동안 안 건드리면 잠들고, 아침·점심·저녁에 인사하고, 생일을 축하해 줍니다.
@@ -48,6 +48,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 | `sick_pet.png` | 아플 때 쓰다듬으면 (없으면 그 캐릭터의 `sick.png`) |
 | `sick_ice_1.png` ~ `sick_ice_4.png` | 아플 때 쓰다듬으면 가끔 나오는 얼음주머니 애니메이션 (없으면 `sick.png`). 네 장의 캐릭터 위치·크기를 똑같이 |
 | `walk_1.png` ~ `walk_4.png` | 오른쪽으로 걷는 4프레임. 왼쪽으로 걸을 땐 좌우를 뒤집어 씁니다 (없으면 그 캐릭터의 `idle_1.png` 로 미끄러지듯 걷습니다) |
+| `drag.png` | 끌 때. 후드 뒷덜미를 잡혀 들린 모습(그림 위쪽 가운데가 커서 위치). 없으면 그 캐릭터의 `idle_1.png` |
 
 빠진 파일은 기본 캐릭터 그림으로 채웁니다. 그래서 `idle_1.png` 하나만 넣어도 동작합니다.
 
@@ -78,7 +79,7 @@ build.bat
 ### What it does
 - **Status**: looks sick during a Claude outage, shows a maintenance pose during maintenance, and looks tired at 90%+ usage. It speaks up on its own when an outage starts or ends.
 - **Click**: a speech bubble with per-account 5-hour / weekly usage (with the usage bridge installed) and incident details.
-- **Drag**: move it anywhere; the position is remembered.
+- **Drag**: pick it up by the back of its hood and move it anywhere; the position is remembered.
 - **Pet**: rub left and right over its head without pressing a button. Pet it while it's sick and it sometimes gets a fresh ice bag.
 - **Walk**: when left alone it sometimes takes a few steps left or right. Click to stop it; uncheck right-click → **걷기** (Walk) to turn walking off.
 - **Sleep, greetings, birthdays**: falls asleep after 10 idle minutes, greets you in the morning / at lunch / in the evening, and celebrates birthdays.
@@ -102,6 +103,7 @@ build.bat
 
 Missing files fall back to the default character, so even a single `idle_1.png` works. `sick_pet` and `sick_ice_1..4` fall back to that character's own `sick.png`. Keep the character at the same position and size in all four `sick_ice` frames.
 `walk_1..4` are a 4-frame walk facing right (mirrored for walking left); without them the character slides using its own `idle_1.png`.
+`drag.png` is shown while dragging: the character lifted by the back of its hood (the top center of the image follows the cursor); without it, that character's `idle_1.png` is used.
 
 ### Birthdays
 Add to `birthdays` in `%USERPROFILE%\.claude\claude-status\mascot.json`:
