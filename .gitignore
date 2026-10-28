@@ -1,0 +1,5 @@
+__pycache__/
+bridge/tsconfig.json
+build/
+dist/
+*.spec

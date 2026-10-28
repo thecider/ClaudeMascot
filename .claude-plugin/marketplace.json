@@ -1,0 +1,5 @@
+{
+  "name": "claude-mascot",
+  "owner": { "name": "thecider" },
+  "plugins": [{ "name": "usage-status-bridge", "source": "./bridge" }]
+}
