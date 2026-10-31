@@ -1,1 +1,1 @@
-{ "name": "usage-status-bridge", "version": "0.1.0", "description": "Writes 5h/weekly usage per signed-in account to ~/.claude/claude-status/usage-<account>.json for the Claude Mascot desktop app" }
+{ "name": "usage-status-bridge", "version": "0.2.0", "description": "Writes 5h/weekly usage per signed-in account to ~/.claude/claude-status/usage-<account>.json, and a finished-turn note to notify.json, for the Claude Mascot desktop app" }

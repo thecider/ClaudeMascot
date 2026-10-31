@@ -12,6 +12,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 ### 할 수 있는 것
 - **상태 표시**: Claude 장애면 아픈 모습, 점검이면 점검 모습, 사용량이 90% 이상이면 지친 모습으로 바뀝니다. 장애가 나거나 복구되면 스스로 말풍선으로 알려 줍니다.
 - **클릭**: 말풍선으로 계정별 5시간·주간 사용량(사용량 브리지 설치 시)과 장애 내용을 보여 줍니다.
+- **작업 완료 알림**: Claude Code 가 한 턴을 끝낼 때마다 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을 말합니다(사용량 브리지 0.2.0 이상).
 - **끌기**: 후드 뒷덜미를 잡혀 들린 채 원하는 곳으로 옮겨집니다. 위치는 기억합니다.
 - **쓰다듬기**: 버튼을 누르지 않은 채 머리 위에서 좌우로 문지르면 좋아합니다. 아플 때 쓰다듬으면 가끔 얼음주머니를 갈아 줍니다.
 - **걷기**: 가만히 두면 가끔 좌우로 몇 걸음 걷습니다. 클릭하면 멈추고, 오른쪽 클릭 → **걷기** 체크를 풀면 걷지 않습니다.
@@ -69,7 +70,8 @@ build.bat
 ### 알아 둘 것
 - Windows 전용입니다.
 - 계정 구분은 Claude Code 가 세션에 넘기는 환경변수 `CLAUDE_CODE_USER_EMAIL` 을 씁니다(공식 문서에 없는 값). Claude Code 가 바뀌면 계정 이름이 안 나올 수 있습니다.
-- 상태는 [status.claude.com](https://status.claude.com) 공개 API 에서 1분마다 가져옵니다. 토큰이나 대화 내용은 다루지 않습니다.
+- 상태는 [status.claude.com](https://status.claude.com) 공개 API 에서 1분마다 가져옵니다. 토큰은 다루지 않습니다. 대화 내용은 작업 완료 알림용으로 답변 첫 줄(40자)만 `notify.json` 에 남깁니다.
+- 이미 브리지를 설치했다면 `claude plugin update usage-status-bridge@claude-mascot` 로 업데이트합니다.
 - 기본 캐릭터 그림은 ChatGPT 로 생성했습니다.
 
 ---
@@ -79,6 +81,7 @@ build.bat
 ### What it does
 - **Status**: looks sick during a Claude outage, shows a maintenance pose during maintenance, and looks tired at 90%+ usage. It speaks up on its own when an outage starts or ends.
 - **Click**: a speech bubble with per-account 5-hour / weekly usage (with the usage bridge installed) and incident details.
+- **Work done**: each time Claude Code finishes a turn, it says "<project> 작업 완료했어요!" (work done) with the first line of the answer (usage bridge 0.2.0+).
 - **Drag**: pick it up by the back of its hood and move it anywhere; the position is remembered.
 - **Pet**: rub left and right over its head without pressing a button. Pet it while it's sick and it sometimes gets a fresh ice bag.
 - **Walk**: when left alone it sometimes takes a few steps left or right. Click to stop it; uncheck right-click → **걷기** (Walk) to turn walking off.
@@ -122,7 +125,8 @@ This creates `dist\ClaudeMascot.exe`. To run without building: `pythonw mascot\c
 ### Notes
 - Windows only.
 - Accounts are told apart with `CLAUDE_CODE_USER_EMAIL`, an undocumented variable Claude Code passes to sessions; account names may stop showing if Claude Code changes it.
-- Status is fetched every minute from the public [status.claude.com](https://status.claude.com) API. No tokens or conversation content are touched.
+- Status is fetched every minute from the public [status.claude.com](https://status.claude.com) API. No tokens are touched. For the work-done note, only the first line of the answer (40 chars) is kept in `notify.json`.
+- If the bridge is already installed, update it with `claude plugin update usage-status-bridge@claude-mascot`.
 - The default character art was generated with ChatGPT.
 
 ## License

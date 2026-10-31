@@ -6,6 +6,7 @@
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
+# 작업 완료 알림: Claude Code 턴이 끝나면(브리지가 notify.json 을 씀) 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을 말한다.
 # 인터랙션: 머리 위에서 문지르기 = 쓰다듬기(pet, 아플 때는 sick_pet 또는 얼음주머니 애니메이션), 10분 안 건드리면 잠들기(sleep),
 #   켜질 때·시간대 첫 클릭 = 인사, mascot.json 의 birthdays 에 오늘(MM-DD)이 있으면 생일 축하(birthday), 「완전히 종료」 = 잘자요(goodnight) 뒤 종료.
 # 캐릭터: ~/.claude/claude-status/characters/<이름>/ 에 같은 이름의 PNG 를 넣고 트레이 「캐릭터」에서 고른다. 빠진 그림은 기본 그림으로 채운다.
@@ -33,6 +34,7 @@ IMAGE_DIR = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspat
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".claude", "claude-status")
 USAGE_GLOB = os.path.join(DATA_DIR, "usage-*.json")
 CONFIG_PATH = os.path.join(DATA_DIR, "mascot.json")
+NOTIFY_PATH = os.path.join(DATA_DIR, "notify.json")  # usage-status-bridge 가 Claude Code 턴이 끝날 때마다 쓴다: {at, project, text}
 CHARACTERS_DIR = os.path.join(DATA_DIR, "characters")  # 캐릭터마다 하위 폴더 하나, 안에 IMAGE_NAMES 와 같은 이름의 PNG
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"  # 「Windows 시작 시 실행」: 현재 사용자 시작 프로그램 목록
 RUN_NAME = "ClaudeMascot"
@@ -43,6 +45,7 @@ HEIGHT = 160
 IDLE_MS = 30_000
 MOOD_POLL_MS = 20_000
 STATUS_POLL_MS = 60_000
+NOTIFY_POLL_MS = 2_000  # Windows 작업 완료 알림과 거의 같이 말하게 짧게 본다
 TALK_MS = 6_000
 OUTAGE_TALK_MS = 12_000  # 장애·점검 중에는 읽을 내용이 많다
 TIRED_PERCENT = 90
@@ -329,6 +332,7 @@ class Mascot:
         self.closing = False
         self.tray_characters = []  # 트레이 메뉴를 만들 때 본 캐릭터 폴더 목록
         self.walking = None  # 걷는 중이면 [방향(1 오른쪽, -1 왼쪽), 남은 px, 프레임 번호]
+        self.notified = load_json(NOTIFY_PATH).get("at")  # 이미 말한 작업 완료 알림. 켜기 전에 끝난 작업은 말하지 않는다
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -377,6 +381,7 @@ class Mascot:
         # 첫 poll_mood 는 타이머로: 바로 부르면 생일 축하가 시작 인사(1초 뒤)보다 먼저 끼어든다
         self.root.after(MOOD_POLL_MS, self.poll_mood)
         self.poll_status()
+        self.poll_notify()
         self.keep_on_top()
         self.root.after(1000, self.greet_on_start)
         self.root.after(random.randint(*WALK_EVERY_MS), self.maybe_walk)
@@ -485,6 +490,17 @@ class Mascot:
     def poll_status(self):
         threading.Thread(target=self.fetch_status, daemon=True).start()
         self.root.after(STATUS_POLL_MS, self.poll_status)
+
+    def poll_notify(self):
+        # Claude Code 턴이 끝나 notify.json 이 바뀌었으면 「<프로젝트> 작업 완료했어요!」 + 답변 첫 줄. 숨겨져 있거나 종료 중이면 넘긴다
+        note = load_json(NOTIFY_PATH)
+        at = note.get("at")
+        if at and at != self.notified:
+            self.notified = at
+            if not self.closing and self.root.state() != "withdrawn":
+                headline = f"{note.get('project') or 'Claude'} 작업 완료했어요!"
+                self.speak(body="\n".join(filter(None, (headline, note.get("text")))))
+        self.root.after(NOTIFY_POLL_MS, self.poll_notify)
 
     def fetch_status(self):
         try:

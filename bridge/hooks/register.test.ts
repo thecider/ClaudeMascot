@@ -8,6 +8,7 @@ const LIMITS = [
 function engine(on: any, written: Array<{ path: string; text: string }>, env: Record<string, string> = {}) {
   const vars: Record<string, string> = { USERPROFILE: 'C:\\Users\\Tester', ...env }
   on('env.get', (_: any, e: any) => ({ value: vars[e.name] }))
+  on('session.cwd', () => ({ value: 'F:\\Work\\MyGame' }))
   on('fs.read', () => ({ value: JSON.stringify({ oauthAccount: { emailAddress: 'tester@example.com' } }) }))
   on('fs.write', (_: any, e: any) => {
     written.push({ path: e.path, text: e.text })
@@ -64,4 +65,44 @@ test('each account writes its own file, so one account never overwrites another'
     'usage-personal@example.com.json',
     'usage-tester@example.com.json',
   ])
+})
+
+const TURN = { answer: '', durationMs: 5000, isAborted: false, turnId: 't1', reason: 'answer' as const }
+
+test('a finished turn tells the mascot the project and the first line of the answer', async ($, on) => {
+  const written: Array<{ path: string; text: string }> = []
+  engine(on, written)
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.turn.complete({ ...TURN, answer: '\n**끌기 기능을 `main`에 커밋했습니다**(1f0bdb6).\n\n세부 내용' })
+
+  expect(written.length).toBe(1)
+  expect(written[0].path.replaceAll('\\', '/')).toBe('C:/Users/Tester/.claude/claude-status/notify.json')
+  const out = JSON.parse(written[0].text)
+  expect(out.project).toBe('MyGame')
+  expect(out.text).toBe('끌기 기능을 main에 커밋했습니다(1f0bdb6).')
+  expect(typeof out.at).toBe('string')
+})
+
+test('a long first line is cut short for the speech bubble', async ($, on) => {
+  const written: Array<{ path: string; text: string }> = []
+  engine(on, written)
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.turn.complete({ ...TURN, answer: '가'.repeat(100) })
+
+  expect(written.length).toBe(1)
+  expect(JSON.parse(written[0].text).text).toBe('가'.repeat(40) + '…')
+})
+
+test('a subagent, an interrupted or an empty turn tells the mascot nothing', async ($, on) => {
+  const written: Array<{ path: string; text: string }> = []
+  engine(on, written)
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.turn.complete({ ...TURN, answer: '조사 결과', agentId: 'a1' })
+  await $.turn.complete({ ...TURN, answer: '중단됨', reason: 'aborted', isAborted: true })
+  await $.turn.complete({ ...TURN, answer: '' })
+
+  expect(written.length).toBe(0)
 })
