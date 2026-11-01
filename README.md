@@ -17,6 +17,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 - **끌기**: 후드 뒷덜미를 잡혀 들린 채 원하는 곳으로 옮겨집니다. 위치는 기억합니다.
 - **쓰다듬기**: 버튼을 누르지 않은 채 머리 위에서 좌우로 문지르면 좋아합니다. 아플 때 쓰다듬으면 가끔 얼음주머니를 갈아 줍니다.
 - **걷기**: 가만히 두면 가끔 좌우로 몇 걸음 걷습니다. 클릭하면 멈추고, 오른쪽 클릭 → **걷기** 체크를 풀면 걷지 않습니다.
+- **햄버거**: 가만히 두면 가끔(1.5~4분마다) 햄버거를 냠냠 먹습니다. 클릭하면 멈춥니다.
 - **잠들기·인사·생일**: 10분 동안 안 건드리면 잠들고, 아침·점심·저녁에 인사하고, 생일을 축하해 줍니다.
 - **트레이 메뉴**: 보이기 / 숨기기 / 캐릭터 / Windows 시작 시 실행 / 완전히 종료
 
@@ -52,6 +53,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 | `walk_1.png` ~ `walk_4.png` | 오른쪽으로 걷는 4프레임. 왼쪽으로 걸을 땐 좌우를 뒤집어 씁니다 (없으면 그 캐릭터의 `idle_1.png` 로 미끄러지듯 걷습니다) |
 | `drag.png` | 끌 때. 후드 뒷덜미를 잡혀 들린 모습(그림 위쪽 가운데가 커서 위치). 없으면 그 캐릭터의 `idle_1.png` |
 | `waiting.png` | Claude 가 내 답을 기다릴 때(손 들고 「?」 카드). 없으면 그 캐릭터의 `talk.png` |
+| `eat_1.png` ~ `eat_6.png` | 햄버거 먹기 6프레임: 들기 → 한 입 → 오물오물 2장 → 만족 2장. 여섯 장의 캐릭터 위치·크기를 똑같이 (없으면 그 캐릭터의 `idle_1.png`) |
 
 빠진 파일은 기본 캐릭터 그림으로 채웁니다. 그래서 `idle_1.png` 하나만 넣어도 동작합니다.
 
@@ -88,6 +90,7 @@ build.bat
 - **Drag**: pick it up by the back of its hood and move it anywhere; the position is remembered.
 - **Pet**: rub left and right over its head without pressing a button. Pet it while it's sick and it sometimes gets a fresh ice bag.
 - **Walk**: when left alone it sometimes takes a few steps left or right. Click to stop it; uncheck right-click → **걷기** (Walk) to turn walking off.
+- **Hamburger**: when left alone it sometimes (every 1.5–4 minutes) munches a hamburger. Click to stop it.
 - **Sleep, greetings, birthdays**: falls asleep after 10 idle minutes, greets you in the morning / at lunch / in the evening, and celebrates birthdays.
 - **Tray menu**: Show / Hide / Character / Run at Windows startup / Quit. (The UI text is Korean.)
 
@@ -110,6 +113,7 @@ build.bat
 Missing files fall back to the default character, so even a single `idle_1.png` works. `sick_pet` and `sick_ice_1..4` fall back to that character's own `sick.png`. Keep the character at the same position and size in all four `sick_ice` frames.
 `walk_1..4` are a 4-frame walk facing right (mirrored for walking left); without them the character slides using its own `idle_1.png`.
 `drag.png` is shown while dragging: the character lifted by the back of its hood (the top center of the image follows the cursor); without it, that character's `idle_1.png` is used.
+`eat_1..6` are a 6-frame hamburger snack (hold → bite → two chewing → two happy); keep the character at the same position and size in all six. Without them, that character's `idle_1.png` is used.
 `waiting.png` is shown while Claude waits for your answer (hand raised, holding a "?" card); without it, that character's `talk.png` is used.
 
 ### Birthdays

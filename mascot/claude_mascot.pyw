@@ -3,6 +3,7 @@
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
 # 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/작업 알림/최근 알림/숨기기/완전히 종료).
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
+# 햄버거: 한가할 때 가끔(1.5~4분마다) 햄버거를 먹는다(eat_1~6, 약 5초). 누르거나 말하면 멈춘다.
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
@@ -69,11 +70,16 @@ WALK_EVERY_MS = (20_000, 60_000)  # 이 사이 무작위 간격으로 걸을지 
 WALK_DISTANCE = (60, 200)  # 한 번에 걷는 거리(px) 범위
 WALK_TICK_MS = 180  # 이 간격마다 한 프레임·WALK_STEP px (그림 보폭에 맞춘 값: 작으면 발이 미끄러져 보인다)
 WALK_STEP = 10
+# 햄버거 먹기: 한가할 때 EAT_EVERY_MS 사이 무작위 간격으로 한 번씩 (그림, 보여 줄 ms). 들고 → 한 입 → 오물오물 두 번 → 한 입 더 → 만족
+EAT_FRAMES = ("eat_1", "eat_2", "eat_3", "eat_4", "eat_5", "eat_6")
+EAT_EVERY_MS = (90_000, 240_000)
+EAT_SEQUENCE = (("eat_1", 800), ("eat_2", 450), ("eat_3", 350), ("eat_4", 350), ("eat_3", 350), ("eat_4", 350),
+                ("eat_2", 450), ("eat_3", 350), ("eat_4", 350), ("eat_5", 700), ("eat_6", 1000))
 IMAGE_NAMES = ("idle_1", "idle_2", "idle_3", "idle_4", "talk", "sick", "maintenance", "tired", "pet", "sleep", "birthday", "goodnight",
-               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4", "drag", "waiting") + WALK_FRAMES
+               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4", "drag", "waiting") + WALK_FRAMES + EAT_FRAMES
 # 그림이 없으면 같은 캐릭터의 이 그림으로 (사용자 캐릭터에 다른 캐릭터가 섞여 보이지 않게, 걷는 그림이 없으면 idle_1 로 미끄러지듯)
 FALLBACK_IMAGES = {"sick_pet": "sick", "sick_ice_1": "sick", "sick_ice_2": "sick", "sick_ice_3": "sick", "sick_ice_4": "sick",
-                   "drag": "idle_1", "waiting": "talk", **{name: "idle_1" for name in WALK_FRAMES}}
+                   "drag": "idle_1", "waiting": "talk", **{name: "idle_1" for name in WALK_FRAMES + EAT_FRAMES}}
 # 끌기: drag 그림의 후드 뒷덜미 위치(그림 너비·높이 비율). 어디를 눌렀든 이 점이 커서 아래로 와서 뒷덜미를 집어 든 것처럼 보인다
 DRAG_ANCHOR = (0.5, 0.08)
 # 아플 때 쓰다듬기: 보통은 sick_pet + 한마디, ICE_CHANCE 확률로 얼음주머니 갈아주기 애니메이션(그림, 보여 줄 ms)
@@ -338,6 +344,7 @@ class Mascot:
         self.closing = False
         self.tray_characters = []  # 트레이 메뉴를 만들 때 본 캐릭터 폴더 목록
         self.walking = None  # 걷는 중이면 [방향(1 오른쪽, -1 왼쪽), 남은 px, 프레임 번호]
+        self.eating = None  # 먹는 중이면 [EAT_SEQUENCE 위치]
         self.notified = load_json(NOTIFY_PATH).get("at")  # 이미 말한 작업 알림. 켜기 전에 온 알림은 말하지 않는다
         self.history = []  # 최근 작업 알림, 새것이 앞: (메뉴 한 줄 "HH:MM 프로젝트 · 완료 — 한 줄", 말풍선 내용, 세션 링크 또는 None)
         self.pose = None  # 말하는 동안 talk 대신 보여 줄 그림(입력 대기 = waiting)
@@ -397,6 +404,7 @@ class Mascot:
         self.keep_on_top()
         self.root.after(1000, self.greet_on_start)
         self.root.after(random.randint(*WALK_EVERY_MS), self.maybe_walk)
+        self.root.after(random.randint(*EAT_EVERY_MS), self.maybe_eat)
 
     def work_area(self):
         rect = wt.RECT()
@@ -405,7 +413,7 @@ class Mascot:
 
     # 그리기
     def current(self):
-        # 우선순위: 잘자요 > 끌기 > 아플 때 쓰다듬기(얼음주머니·sick_pet) > 장애·점검·피곤 > 걷기 > 쓰다듬기 > 생일 축하 말풍선 > 말하기 > 잠 > 생일 > 평상시
+        # 우선순위: 잘자요 > 끌기 > 아플 때 쓰다듬기(얼음주머니·sick_pet) > 장애·점검·피곤 > 걷기 > 햄버거 먹기 > 쓰다듬기 > 생일 축하 말풍선 > 말하기 > 잠 > 생일 > 평상시
         # 장애·점검·피곤 이미지는 말하는 중에도 유지한다: 아픈 모습이 바로 보여야 직관적이다. talk 는 평상시에 말할 때만
         # 끌기는 아플 때도 drag: 들려 가는 동안은 어미 고양이에게 물린 새끼처럼 평온한 얼굴로 보인다
         if self.closing:
@@ -420,6 +428,8 @@ class Mascot:
         if self.walking:
             direction, _, frame = self.walking
             return WALK_FRAMES[frame] + ("_left" if direction < 0 else "")
+        if self.eating:
+            return EAT_SEQUENCE[self.eating[0]][0]
         if self.petting:
             return "pet"
         if self.celebrating:
@@ -642,6 +652,7 @@ class Mascot:
     def speak(self, headline=None, body=None, duration=None, link=None, pose=None):
         # body 가 없으면 장애 내용 + 사용량을 말한다. headline 은 그 위 첫 줄. link 가 있으면 말풍선을 누를 때 그 주소를 연다. pose 는 talk 대신 보여 줄 그림
         self.stop_walk()
+        self.stop_eat()
         self.ice_frame = None
         self.pose = pose
         self.petting = self.celebrating = False  # 쓰다듬기·생일 한마디 중에 다른 말풍선이 뜨면 pet·birthday 가 남지 않게 푼다
@@ -772,9 +783,38 @@ class Mascot:
         self.save_config(x=self.x, y=self.y)
         self.show()
 
+    # 햄버거 먹기: 걷기와 같은 한가할 때(걷기 체크와는 상관없이)만 시작해 EAT_SEQUENCE 를 한 번 돈다. 누르거나 말하면 멈춘다
+    def maybe_eat(self):
+        if (self.eating is None and not self.walking and not self.closing and self.bubble is None and self.press is None
+                and not self.menu_open and self.root.state() != "withdrawn" and self.current() == self.idle):
+            self.eating = [0]
+            self.show()
+            self.root.after(EAT_SEQUENCE[0][1], self.eat_tick, self.eating)
+        self.root.after(random.randint(*EAT_EVERY_MS), self.maybe_eat)
+
+    def eat_tick(self, eating):
+        if eating is not self.eating:  # 그 사이 멈췄다
+            return
+        eating[0] += 1
+        if eating[0] == len(EAT_SEQUENCE):
+            self.stop_eat()
+            return
+        self.show()
+        if self.shown != EAT_SEQUENCE[eating[0]][0]:  # 장애·점검·피곤 등 먹는 그림보다 앞서는 상태가 됐다
+            self.stop_eat()
+            return
+        self.root.after(EAT_SEQUENCE[eating[0]][1], self.eat_tick, eating)
+
+    def stop_eat(self):
+        if self.eating is None:
+            return
+        self.eating = None
+        self.show()
+
     # 조작: 조금만 움직이고 떼면 클릭(말하기), 그 이상이면 끌기(이동, 뒷덜미를 잡힌 drag 그림)
     def on_press(self, event):
         self.stop_walk()
+        self.stop_eat()
         self.last_touch = time.monotonic()
         self.press = (event.x_root, event.y_root)
 
