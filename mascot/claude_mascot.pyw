@@ -1,12 +1,13 @@
 # Claude Mascot: 바탕화면에 SD 캐릭터를 띄워 Claude 상태와 사용량에 반응한다 (Windows 전용).
 # 데이터: ~/.claude/claude-status/usage-<계정>.json (Claude Code 플러그인 usage-status-bridge 가 쓴다, 없으면 상태만), status.claude.com 공개 API.
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
-# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/작업 알림/최근 알림/숨기기/완전히 종료).
+# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/작업 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
 # 햄버거: 한가할 때 가끔(1.5~4분마다) 햄버거를 먹는다(eat_1~6, 약 5초). 누르거나 말하면 멈춘다.
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
+# 사용량 알림: 5시간·주간 사용량이 75%·90% 를 넘는 순간, 경고했던 창이 초기화될 때 말한다. 오른쪽 클릭 「사용량 알림」으로 끈다.
 # 작업 알림(브리지가 notify.json 을 씀): Claude Code 턴이 끝나면 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄,
 #   권한 확인·질문으로 사람의 답을 기다리면 waiting 그림으로 「<프로젝트> 확인이 필요해요!」. 오른쪽 클릭 「작업 알림」으로 끈다.
 #   Desktop 앱 세션이면 그 말풍선을 눌러 해당 세션을 연다(claude://code/continue?session=local_…). 「최근 알림」에 최근 10개가 남는다.
@@ -56,6 +57,8 @@ HISTORY_SIZE = 10  # 오른쪽 클릭 「최근 알림」에 남기는 개수 (�
 TALK_MS = 6_000
 OUTAGE_TALK_MS = 12_000  # 장애·점검 중에는 읽을 내용이 많다
 TIRED_PERCENT = 90
+USAGE_LEVELS = (75, 90)  # 사용량이 이 값을 넘는 순간 한 번씩 말한다. 경고했던 창이 초기화되면 그것도 말한다
+USAGE_WINDOWS = {"five_hour": "5시간", "seven_day": "주간"}
 STALE_MINUTES = 30
 CLICK_SLOP = 4  # 이 픽셀 안에서 떼면 끌기가 아니라 클릭으로 본다
 SLEEP_MINUTES = 10  # 이만큼 안 건드리면 잠든다 (장애·점검·피곤일 때는 안 잔다)
@@ -348,6 +351,7 @@ class Mascot:
         self.notified = load_json(NOTIFY_PATH).get("at")  # 이미 말한 작업 알림. 켜기 전에 온 알림은 말하지 않는다
         self.history = []  # 최근 작업 알림, 새것이 앞: (메뉴 한 줄 "HH:MM 프로젝트 · 완료 — 한 줄", 말풍선 내용, 세션 링크 또는 None)
         self.pose = None  # 말하는 동안 talk 대신 보여 줄 그림(입력 대기 = waiting)
+        self.usage_levels = {}  # (계정, 창) → (넘은 USAGE_LEVELS 단계(아직이면 0), 초기화 시각 문자열)
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -370,6 +374,8 @@ class Mascot:
         self.menu.add_checkbutton(label="걷기", variable=self.walk_enabled, command=lambda: self.save_config(walk=self.walk_enabled.get()))
         self.notify_enabled = tk.BooleanVar(self.root, (config or {}).get("notify", True))
         self.menu.add_checkbutton(label="작업 알림", variable=self.notify_enabled, command=lambda: self.save_config(notify=self.notify_enabled.get()))
+        self.usage_enabled = tk.BooleanVar(self.root, (config or {}).get("usage_notify", True))
+        self.menu.add_checkbutton(label="사용량 알림", variable=self.usage_enabled, command=lambda: self.save_config(usage_notify=self.usage_enabled.get()))
         self.history_menu = tk.Menu(self.menu, tearoff=0, postcommand=self.fill_history)
         self.menu.add_cascade(label="최근 알림", menu=self.history_menu)
         self.menu.add_command(label="숨기기", command=self.hide_window)
@@ -395,6 +401,7 @@ class Mascot:
         if config is not None and "birthdays" not in config:
             self.save_config(birthdays={})
 
+        self.check_usage()  # 처음 보는 계정·창은 기억만 한다: 켤 때 이미 넘은 단계는 말하지 않는다
         self.show()
         self.rotate_idle()
         # 첫 poll_mood 는 타이머로: 바로 부르면 생일 축하가 시작 인사(1초 뒤)보다 먼저 끼어든다
@@ -507,7 +514,44 @@ class Mascot:
         if self.tray_characters != list_characters():
             self.tray.update_menu()
         self.greet_birthday()
+        self.check_usage()
         self.root.after(MOOD_POLL_MS, self.poll_mood)
+
+    def check_usage(self):
+        # 계정·창(5시간/주간)마다 넘은 단계를 기억해, 단계가 오르면 「75% 넘었어요」, 경고했던 창이 초기화되면 「초기화됐어요」.
+        # 처음 보는 계정·창은 기억만 한다. 「최근 알림」에는 늘 남기고, 말풍선은 사용량 알림이 꺼져 있거나 숨겨져 있거나 종료 중이면 넘긴다
+        now = datetime.datetime.now(datetime.timezone.utc)
+        lines = []
+        for usage in load_accounts():
+            name = (usage.get("account") or "--").split("@")[0]
+            for kind, label in USAGE_WINDOWS.items():
+                window = usage["windows"].get(kind)
+                if not window:
+                    continue
+                percent = effective_percent(window, now)
+                level = max((l for l in USAGE_LEVELS if percent >= l), default=0)
+                resets = window.get("resetsAt") or ""
+                key = (usage.get("account"), kind)
+                previous = self.usage_levels.get(key)
+                self.usage_levels[key] = (level, resets)
+                if previous is None:
+                    continue
+                was, was_resets = previous
+                # 초기화: 경고했던 창이 0% 가 됐거나(초기화 시각이 지남) 새 창으로 넘어갔다(초기화 시각이 30분 넘게 뒤로. 몇 초 흔들림은 무시)
+                old_at, new_at = parse_time(was_resets), parse_time(resets)
+                moved = old_at is not None and new_at is not None and new_at - old_at > datetime.timedelta(minutes=30)
+                if was and (percent == 0 or moved):
+                    lines.append(f"{name} {label} 사용량이 초기화됐어요! 다시 쓸 수 있어요")
+                elif level > was:
+                    at = parse_time(resets)
+                    when = f" (초기화 {at.astimezone():{'%H:%M' if kind == 'five_hour' else '%m/%d %H:%M'}})" if at else ""
+                    lines.append(f"{name} {label} 사용량 {level}% 넘었어요{when}")
+        if not lines:
+            return
+        body = "\n".join(lines)
+        self.history = [(f"{local_now():%H:%M} 사용량 — {lines[0]}", body, None)] + self.history[:HISTORY_SIZE - 1]
+        if self.usage_enabled.get() and not self.closing and self.root.state() != "withdrawn":
+            self.speak(body=body)
 
     def poll_status(self):
         threading.Thread(target=self.fetch_status, daemon=True).start()

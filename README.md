@@ -13,6 +13,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 - **상태 표시**: Claude 장애면 아픈 모습, 점검이면 점검 모습, 사용량이 90% 이상이면 지친 모습으로 바뀝니다. 장애가 나거나 복구되면 스스로 말풍선으로 알려 줍니다.
 - **클릭**: 말풍선으로 계정별 5시간·주간 사용량(사용량 브리지 설치 시)과 장애 내용을 보여 줍니다.
 - **작업 알림**(사용량 브리지 0.4.0 이상): Claude Code 가 한 턴을 끝낼 때마다 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을, 권한 확인이나 질문으로 내 답을 기다리면 손을 들고 「<프로젝트> 확인이 필요해요!」라고 말합니다. Claude 데스크톱 앱 세션이면 그 말풍선을 눌러 해당 세션으로 바로 갑니다. 오른쪽 클릭 → **작업 알림** 체크를 풀면 말하지 않습니다.
+- **사용량 알림**(사용량 브리지 필요): 5시간·주간 사용량이 75%·90% 를 넘는 순간 알려 주고, 경고했던 사용량이 초기화되면 「다시 쓸 수 있어요」라고 말합니다. 오른쪽 클릭 → **사용량 알림** 체크를 풀면 말하지 않습니다.
 - **최근 알림**: 오른쪽 클릭 → **최근 알림** 에 최근 10개가 남습니다. 누르면 그 세션으로 갑니다(마스코트를 다시 켜면 비워집니다).
 - **끌기**: 후드 뒷덜미를 잡혀 들린 채 원하는 곳으로 옮겨집니다. 위치는 기억합니다.
 - **쓰다듬기**: 버튼을 누르지 않은 채 머리 위에서 좌우로 문지르면 좋아합니다. 아플 때 쓰다듬으면 가끔 얼음주머니를 갈아 줍니다.
@@ -86,6 +87,7 @@ build.bat
 - **Status**: looks sick during a Claude outage, shows a maintenance pose during maintenance, and looks tired at 90%+ usage. It speaks up on its own when an outage starts or ends.
 - **Click**: a speech bubble with per-account 5-hour / weekly usage (with the usage bridge installed) and incident details.
 - **Work notes** (usage bridge 0.4.0+): each time Claude Code finishes a turn, it says "<project> 작업 완료했어요!" (work done) with the first line of the answer; when Claude waits for you (a permission prompt or a question), it raises its hand and says "<project> 확인이 필요해요!" (needs you). For a Claude desktop app session, click that bubble to jump to the session. Uncheck right-click → **작업 알림** (Work notes) to turn them off.
+- **Usage alerts** (needs the usage bridge): speaks up the moment 5-hour or weekly usage passes 75% / 90%, and says "다시 쓸 수 있어요" (you can use it again) when a warned window resets. Uncheck right-click → **사용량 알림** (Usage alerts) to turn them off.
 - **Recent notes**: right-click → **최근 알림** (Recent notes) keeps the last 10; click one to jump to its session (cleared when the mascot restarts).
 - **Drag**: pick it up by the back of its hood and move it anywhere; the position is remembered.
 - **Pet**: rub left and right over its head without pressing a button. Pet it while it's sick and it sometimes gets a fresh ice bag.
