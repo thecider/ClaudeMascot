@@ -9,7 +9,8 @@
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
 # 사용량 알림: 5시간·주간 사용량이 75%·90% 를 넘는 순간, 경고했던 창이 초기화될 때 말한다. 오른쪽 클릭 「사용량 알림」으로 끈다.
 # 작업 알림(브리지가 notify.json 을 씀): Claude Code 턴이 끝나면 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄,
-#   권한 확인·질문으로 사람의 답을 기다리면 waiting 그림으로 「<프로젝트> 확인이 필요해요!」. 오른쪽 클릭 「작업 알림」으로 끈다.
+#   권한 확인·질문으로 사람의 답을 기다리면 waiting 그림으로 「<프로젝트> 확인이 필요해요!」, 오류로 끝나면 sick 그림으로 「작업이 실패했어요!」. 오른쪽 클릭 「작업 알림」으로 끈다.
+#   브리지가 세션마다 쓰는 상태(sessions/*.json)를 보고, 작업 중인 세션이 있으면 노트북 두드리는 그림(working_1~4)을 되풀이하고, 클릭 말풍선 맨 위에 「작업 중 2 · 대기 1」을 붙인다.
 #   Desktop 앱 세션이면 그 말풍선을 눌러 해당 세션을 연다(claude://code/continue?session=local_…). 「최근 알림」에 최근 10개가 남는다.
 # 인터랙션: 머리 위에서 문지르기 = 쓰다듬기(pet, 아플 때는 sick_pet 또는 얼음주머니 애니메이션), 10분 안 건드리면 잠들기(sleep),
 #   켜질 때·시간대 첫 클릭 = 인사, mascot.json 의 birthdays 에 오늘(MM-DD)이 있으면 생일 축하(birthday), 「완전히 종료」 = 잘자요(goodnight) 뒤 종료.
@@ -39,7 +40,10 @@ IMAGE_DIR = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspat
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".claude", "claude-status")
 USAGE_GLOB = os.path.join(DATA_DIR, "usage-*.json")
 CONFIG_PATH = os.path.join(DATA_DIR, "mascot.json")
-NOTIFY_PATH = os.path.join(DATA_DIR, "notify.json")  # usage-status-bridge 가 Claude Code 턴이 끝날 때마다 쓴다: {at, project, text, session}
+NOTIFY_PATH = os.path.join(DATA_DIR, "notify.json")  # usage-status-bridge 가 작업 알림마다 쓴다: {at, kind(done/waiting/failed), project, text, session}
+SESSIONS_GLOB = os.path.join(DATA_DIR, "sessions", "*.json")  # 브리지가 세션마다 쓴다: {at, state(working/waiting/idle/ended), project, session}
+SESSION_STALE_MINUTES = 15  # working·waiting 인데 이만큼 갱신이 없으면 비정상 종료로 보고 센다에서 뺀다
+SESSION_FORGET_HOURS = 24  # 끝난(ended) 세션 파일과 이만큼 갱신이 없는 파일은 지운다
 SESSION_LINK = "claude://code/continue?session="  # Claude 데스크톱 앱이 이 세션(local_…)을 연다
 SESSION_ID = re.compile(r"local_[A-Za-z0-9-]{1,64}")  # 앱이 받는 세션 ID 모양. 파일에서 읽은 값이라 이 모양일 때만 연다
 CHARACTERS_DIR = os.path.join(DATA_DIR, "characters")  # 캐릭터마다 하위 폴더 하나, 안에 IMAGE_NAMES 와 같은 이름의 PNG
@@ -78,11 +82,15 @@ EAT_FRAMES = ("eat_1", "eat_2", "eat_3", "eat_4", "eat_5", "eat_6")
 EAT_EVERY_MS = (90_000, 240_000)
 EAT_SEQUENCE = (("eat_1", 800), ("eat_2", 450), ("eat_3", 350), ("eat_4", 350), ("eat_3", 350), ("eat_4", 350),
                 ("eat_2", 450), ("eat_3", 350), ("eat_4", 350), ("eat_5", 700), ("eat_6", 1000))
+# 작업 중: 메인 대화 턴이 도는 세션이 하나라도 있으면 평상시 그림 대신 이 순서를 되풀이한다(그림, 보여 줄 ms). 타닥타닥 → 빠르게 → 잠깐 쉬며 뿌듯
+WORKING_FRAMES = ("working_1", "working_2", "working_3", "working_4")
+WORKING_SEQUENCE = (("working_1", 300), ("working_2", 300), ("working_1", 300), ("working_2", 300), ("working_3", 250),
+                    ("working_2", 300), ("working_3", 250), ("working_1", 300), ("working_2", 300), ("working_4", 1500))
 IMAGE_NAMES = ("idle_1", "idle_2", "idle_3", "idle_4", "talk", "sick", "maintenance", "tired", "pet", "sleep", "birthday", "goodnight",
-               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4", "drag", "waiting") + WALK_FRAMES + EAT_FRAMES
+               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4", "drag", "waiting") + WALK_FRAMES + EAT_FRAMES + WORKING_FRAMES
 # 그림이 없으면 같은 캐릭터의 이 그림으로 (사용자 캐릭터에 다른 캐릭터가 섞여 보이지 않게, 걷는 그림이 없으면 idle_1 로 미끄러지듯)
 FALLBACK_IMAGES = {"sick_pet": "sick", "sick_ice_1": "sick", "sick_ice_2": "sick", "sick_ice_3": "sick", "sick_ice_4": "sick",
-                   "drag": "idle_1", "waiting": "talk", **{name: "idle_1" for name in WALK_FRAMES + EAT_FRAMES}}
+                   "drag": "idle_1", "waiting": "talk", **{name: "idle_1" for name in WALK_FRAMES + EAT_FRAMES + WORKING_FRAMES}}
 # 끌기: drag 그림의 후드 뒷덜미 위치(그림 너비·높이 비율). 어디를 눌렀든 이 점이 커서 아래로 와서 뒷덜미를 집어 든 것처럼 보인다
 DRAG_ANCHOR = (0.5, 0.08)
 # 아플 때 쓰다듬기: 보통은 sick_pet + 한마디, ICE_CHANCE 확률로 얼음주머니 갈아주기 애니메이션(그림, 보여 줄 ms)
@@ -255,6 +263,32 @@ def load_accounts():
     return sorted((a for a in accounts if a.get("windows")), key=lambda a: a.get("updatedAt", ""))
 
 
+def load_sessions(now):
+    # 브리지가 쓴 세션 상태들. 끝났거나 오래 갱신이 없는 파일은 지우고, working·waiting 이 오래 멈춘 세션(비정상 종료)은 idle 로 본다
+    sessions = []
+    for path in glob.glob(SESSIONS_GLOB):
+        session = load_json(path)
+        at = parse_time(session.get("at") or "")
+        age = (now - at).total_seconds() if at else None
+        if session.get("state") == "ended" or age is None or age > SESSION_FORGET_HOURS * 3600:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            continue
+        if session.get("state") in ("working", "waiting") and age > SESSION_STALE_MINUTES * 60:
+            session["state"] = "idle"
+        sessions.append(session)
+    return sessions
+
+
+def sessions_line(sessions):
+    # 「작업 중 2 · 대기 1」: 둘 다 0 이면 None
+    counts = [(label, sum(s.get("state") == state for s in sessions)) for state, label in (("working", "작업 중"), ("waiting", "대기"))]
+    parts = [f"{label} {n}" for label, n in counts if n]
+    return " · ".join(parts) or None
+
+
 def effective_percent(window, now):
     # 초기화 시각이 지났으면 새 응답 전이라도 0 으로 본다
     resets_at = parse_time(window.get("resetsAt") or "")
@@ -348,6 +382,8 @@ class Mascot:
         self.tray_characters = []  # 트레이 메뉴를 만들 때 본 캐릭터 폴더 목록
         self.walking = None  # 걷는 중이면 [방향(1 오른쪽, -1 왼쪽), 남은 px, 프레임 번호]
         self.eating = None  # 먹는 중이면 [EAT_SEQUENCE 위치]
+        self.sessions = []  # 브리지가 쓴 세션 상태들 (load_sessions)
+        self.working = None  # 작업 중 그림을 돌리는 중이면 [WORKING_SEQUENCE 위치]
         self.notified = load_json(NOTIFY_PATH).get("at")  # 이미 말한 작업 알림. 켜기 전에 온 알림은 말하지 않는다
         self.history = []  # 최근 작업 알림, 새것이 앞: (메뉴 한 줄 "HH:MM 프로젝트 · 완료 — 한 줄", 말풍선 내용, 세션 링크 또는 None)
         self.pose = None  # 말하는 동안 talk 대신 보여 줄 그림(입력 대기 = waiting)
@@ -420,7 +456,8 @@ class Mascot:
 
     # 그리기
     def current(self):
-        # 우선순위: 잘자요 > 끌기 > 아플 때 쓰다듬기(얼음주머니·sick_pet) > 장애·점검·피곤 > 걷기 > 햄버거 먹기 > 쓰다듬기 > 생일 축하 말풍선 > 말하기 > 잠 > 생일 > 평상시
+        # 우선순위: 잘자요 > 끌기 > 아플 때 쓰다듬기(얼음주머니·sick_pet) > 장애·점검·피곤 > 걷기 > 햄버거 먹기 > 쓰다듬기 > 생일 축하 말풍선 > 말하기 > 작업 중 > 잠 > 생일 > 평상시
+        # 작업 중에는 평상시 그림이 아니라서 걷기·햄버거가 시작되지 않고 잠들지도 않는다
         # 장애·점검·피곤 이미지는 말하는 중에도 유지한다: 아픈 모습이 바로 보여야 직관적이다. talk 는 평상시에 말할 때만
         # 끌기는 아플 때도 drag: 들려 가는 동안은 어미 고양이에게 물린 새끼처럼 평온한 얼굴로 보인다
         if self.closing:
@@ -443,6 +480,8 @@ class Mascot:
             return "birthday"
         if self.talking:
             return self.pose or "talk"
+        if self.working:
+            return WORKING_SEQUENCE[self.working[0]][0]
         if time.monotonic() - self.last_touch >= SLEEP_MINUTES * 60:
             return "sleep"
         return "birthday" if self.birthday_names() else self.idle
@@ -561,22 +600,43 @@ class Mascot:
         # notify.json 이 바뀌었으면: 턴이 끝남(kind done) = 「<프로젝트> 작업 완료했어요!」, 사람의 답을 기다림(waiting) = 「<프로젝트> 확인이 필요해요!」 + 한 줄.
         # 「최근 알림」에는 늘 남기고, 말풍선은 알림이 꺼져 있거나 숨겨져 있거나 종료 중이면 넘긴다
         # (꺼져 있어도 본 것으로 친다: 다시 켰을 때 지난 알림을 뒤늦게 말하지 않게)
+        self.poll_sessions()
         note = load_json(NOTIFY_PATH)
         at = note.get("at")
         if at and at != self.notified:
             self.notified = at
-            waiting = note.get("kind") == "waiting"
+            kind = note.get("kind")
+            waiting = kind == "waiting"
             project = note.get("project") or "Claude"
-            headline = f"{project} {'확인이 필요해요' if waiting else '작업 완료했어요'}!"
+            headline = f"{project} {'확인이 필요해요' if waiting else '작업이 실패했어요' if kind == 'failed' else '작업 완료했어요'}!"
             body = "\n".join(filter(None, (headline, note.get("text"))))
             # Desktop 앱 세션이면 말풍선을 눌러 그 세션으로 간다(CLI 세션은 session 이 없어 그냥 닫힌다)
             session = note.get("session")
             link = SESSION_LINK + session if isinstance(session, str) and SESSION_ID.fullmatch(session) else None
-            label = f"{local_now():%H:%M} {project} · {'대기' if waiting else '완료'}" + (f" — {note['text']}" if note.get("text") else "")
+            label = f"{local_now():%H:%M} {project} · {'대기' if waiting else '실패' if kind == 'failed' else '완료'}" + (f" — {note['text']}" if note.get("text") else "")
             self.history = [(label, body, link)] + self.history[:HISTORY_SIZE - 1]
             if self.notify_enabled.get() and not self.closing and self.root.state() != "withdrawn":
-                self.speak(body=body, link=link, pose="waiting" if waiting else None)
+                self.speak(body=body, link=link, pose="waiting" if waiting else "sick" if kind == "failed" else None)
         self.root.after(NOTIFY_POLL_MS, self.poll_notify)
+
+    def poll_sessions(self):
+        # 세션 상태를 다시 읽어, 작업 중인 세션이 생기면 작업 중 그림을 돌리기 시작하고 다 끝나면 멈춘다
+        self.sessions = load_sessions(datetime.datetime.now(datetime.timezone.utc))
+        busy = any(s.get("state") == "working" for s in self.sessions)
+        if busy and self.working is None:
+            self.working = [0]
+            self.show()
+            self.root.after(WORKING_SEQUENCE[0][1], self.work_tick, self.working)
+        elif not busy and self.working is not None:
+            self.working = None
+            self.show()
+
+    def work_tick(self, working):
+        if working is not self.working:  # 그 사이 작업이 끝났다(다시 시작했으면 그 타이머가 따로 돈다)
+            return
+        working[0] = (working[0] + 1) % len(WORKING_SEQUENCE)
+        self.show()
+        self.root.after(WORKING_SEQUENCE[working[0]][1], self.work_tick, working)
 
     def fill_history(self):
         # 「최근 알림」을 펼칠 때마다 새로 채운다. 누르면 세션 링크가 있으면 그 세션을 열고, 없으면 그 알림을 다시 말한다
@@ -700,7 +760,9 @@ class Mascot:
         self.ice_frame = None
         self.pose = pose
         self.petting = self.celebrating = False  # 쓰다듬기·생일 한마디 중에 다른 말풍선이 뜨면 pet·birthday 가 남지 않게 푼다
-        text = body or usage_speech(self.status, load_accounts(), datetime.datetime.now(datetime.timezone.utc))
+        # 클릭으로 말할 때(body 없음)는 맨 위에 세션 현황(「작업 중 2 · 대기 1」)을 붙인다
+        text = body or "\n".join(filter(None, (sessions_line(self.sessions),
+                                               usage_speech(self.status, load_accounts(), datetime.datetime.now(datetime.timezone.utc)))))
         if headline:
             text = headline + "\n" + text
         if self.bubble is not None:

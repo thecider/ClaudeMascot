@@ -12,7 +12,8 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 ### 할 수 있는 것
 - **상태 표시**: Claude 장애면 아픈 모습, 점검이면 점검 모습, 사용량이 90% 이상이면 지친 모습으로 바뀝니다. 장애가 나거나 복구되면 스스로 말풍선으로 알려 줍니다.
 - **클릭**: 말풍선으로 계정별 5시간·주간 사용량(사용량 브리지 설치 시)과 장애 내용을 보여 줍니다.
-- **작업 알림**(사용량 브리지 0.4.0 이상): Claude Code 가 한 턴을 끝낼 때마다 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을, 권한 확인이나 질문으로 내 답을 기다리면 손을 들고 「<프로젝트> 확인이 필요해요!」라고 말합니다. Claude 데스크톱 앱 세션이면 그 말풍선을 눌러 해당 세션으로 바로 갑니다. 오른쪽 클릭 → **작업 알림** 체크를 풀면 말하지 않습니다.
+- **작업 알림**(사용량 브리지 0.5.0 이상): Claude Code 가 한 턴을 끝낼 때마다 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을, 권한 확인이나 질문으로 내 답을 기다리면 손을 들고 「<프로젝트> 확인이 필요해요!」를, 오류로 끝나면 아픈 얼굴로 「<프로젝트> 작업이 실패했어요!」를 말합니다. Claude 데스크톱 앱 세션이면 그 말풍선을 눌러 해당 세션으로 바로 갑니다. 오른쪽 클릭 → **작업 알림** 체크를 풀면 말하지 않습니다.
+- **작업 중**(사용량 브리지 0.5.0 이상): Claude Code 가 일하는 동안 노트북을 두드립니다. 클릭하면 말풍선 맨 위에 「작업 중 2 · 대기 1」처럼 세션 현황이 나옵니다.
 - **사용량 알림**(사용량 브리지 필요): 5시간·주간 사용량이 75%·90% 를 넘는 순간 알려 주고, 경고했던 사용량이 초기화되면 「다시 쓸 수 있어요」라고 말합니다. 오른쪽 클릭 → **사용량 알림** 체크를 풀면 말하지 않습니다.
 - **최근 알림**: 오른쪽 클릭 → **최근 알림** 에 최근 10개가 남습니다. 누르면 그 세션으로 갑니다(마스코트를 다시 켜면 비워집니다).
 - **끌기**: 후드 뒷덜미를 잡혀 들린 채 원하는 곳으로 옮겨집니다. 위치는 기억합니다.
@@ -55,6 +56,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 | `drag.png` | 끌 때. 후드 뒷덜미를 잡혀 들린 모습(그림 위쪽 가운데가 커서 위치). 없으면 그 캐릭터의 `idle_1.png` |
 | `waiting.png` | Claude 가 내 답을 기다릴 때(손 들고 「?」 카드). 없으면 그 캐릭터의 `talk.png` |
 | `eat_1.png` ~ `eat_6.png` | 햄버거 먹기 6프레임: 들기 → 한 입 → 오물오물 2장 → 만족 2장. 여섯 장의 캐릭터 위치·크기를 똑같이 (없으면 그 캐릭터의 `idle_1.png`) |
+| `working_1.png` ~ `working_4.png` | Claude 가 일하는 동안 노트북 두드리기 4프레임: 타닥 2장 → 빠르게 → 잠깐 쉬며 뿌듯. 네 장의 캐릭터 위치·크기를 똑같이 (없으면 그 캐릭터의 `idle_1.png`) |
 
 빠진 파일은 기본 캐릭터 그림으로 채웁니다. 그래서 `idle_1.png` 하나만 넣어도 동작합니다.
 
@@ -75,7 +77,7 @@ build.bat
 ### 알아 둘 것
 - Windows 전용입니다.
 - 계정 구분은 Claude Code 가 세션에 넘기는 환경변수 `CLAUDE_CODE_USER_EMAIL` 을 씁니다(공식 문서에 없는 값). Claude Code 가 바뀌면 계정 이름이 안 나올 수 있습니다.
-- 상태는 [status.claude.com](https://status.claude.com) 공개 API 에서 1분마다 가져옵니다. 토큰은 다루지 않습니다. 대화 내용은 작업 알림용으로 답변 첫 줄(40자)·기다리는 도구 이름과 데스크톱 앱 세션 ID 만 `notify.json` 에 남깁니다.
+- 상태는 [status.claude.com](https://status.claude.com) 공개 API 에서 1분마다 가져옵니다. 토큰은 다루지 않습니다. 대화 내용은 작업 알림용으로 답변 첫 줄(40자)·기다리는 도구 이름과 데스크톱 앱 세션 ID 만 `notify.json` 에 남깁니다. 세션 상태(`sessions/*.json`)에는 상태·프로젝트 폴더 이름·세션 ID 만 남깁니다.
 - 이미 브리지를 설치했다면 `claude plugin update usage-status-bridge@claude-mascot` 로 업데이트합니다.
 - 기본 캐릭터 그림은 ChatGPT 로 생성했습니다.
 
@@ -86,7 +88,8 @@ build.bat
 ### What it does
 - **Status**: looks sick during a Claude outage, shows a maintenance pose during maintenance, and looks tired at 90%+ usage. It speaks up on its own when an outage starts or ends.
 - **Click**: a speech bubble with per-account 5-hour / weekly usage (with the usage bridge installed) and incident details.
-- **Work notes** (usage bridge 0.4.0+): each time Claude Code finishes a turn, it says "<project> 작업 완료했어요!" (work done) with the first line of the answer; when Claude waits for you (a permission prompt or a question), it raises its hand and says "<project> 확인이 필요해요!" (needs you). For a Claude desktop app session, click that bubble to jump to the session. Uncheck right-click → **작업 알림** (Work notes) to turn them off.
+- **Work notes** (usage bridge 0.5.0+): each time Claude Code finishes a turn, it says "<project> 작업 완료했어요!" (work done) with the first line of the answer; when Claude waits for you (a permission prompt or a question), it raises its hand and says "<project> 확인이 필요해요!" (needs you); when a turn ends in an error, it looks sick and says "<project> 작업이 실패했어요!" (failed). For a Claude desktop app session, click that bubble to jump to the session. Uncheck right-click → **작업 알림** (Work notes) to turn them off.
+- **Working** (usage bridge 0.5.0+): while Claude Code works, the mascot types on a laptop. Click it to see the session count at the top of the bubble, e.g. "작업 중 2 · 대기 1" (2 working, 1 waiting).
 - **Usage alerts** (needs the usage bridge): speaks up the moment 5-hour or weekly usage passes 75% / 90%, and says "다시 쓸 수 있어요" (you can use it again) when a warned window resets. Uncheck right-click → **사용량 알림** (Usage alerts) to turn them off.
 - **Recent notes**: right-click → **최근 알림** (Recent notes) keeps the last 10; click one to jump to its session (cleared when the mascot restarts).
 - **Drag**: pick it up by the back of its hood and move it anywhere; the position is remembered.
@@ -116,6 +119,7 @@ Missing files fall back to the default character, so even a single `idle_1.png` 
 `walk_1..4` are a 4-frame walk facing right (mirrored for walking left); without them the character slides using its own `idle_1.png`.
 `drag.png` is shown while dragging: the character lifted by the back of its hood (the top center of the image follows the cursor); without it, that character's `idle_1.png` is used.
 `eat_1..6` are a 6-frame hamburger snack (hold → bite → two chewing → two happy); keep the character at the same position and size in all six. Without them, that character's `idle_1.png` is used.
+`working_1..4` are a 4-frame laptop-typing loop shown while Claude works (two typing → fast → a proud pause); keep the character at the same position and size in all four. Without them, that character's `idle_1.png` is used.
 `waiting.png` is shown while Claude waits for your answer (hand raised, holding a "?" card); without it, that character's `talk.png` is used.
 
 ### Birthdays
@@ -135,7 +139,7 @@ This creates `dist\ClaudeMascot.exe`. To run without building: `pythonw mascot\c
 ### Notes
 - Windows only.
 - Accounts are told apart with `CLAUDE_CODE_USER_EMAIL`, an undocumented variable Claude Code passes to sessions; account names may stop showing if Claude Code changes it.
-- Status is fetched every minute from the public [status.claude.com](https://status.claude.com) API. No tokens are touched. For work notes, only the first line of the answer (40 chars), the name of the tool waiting for you and the desktop app session id are kept in `notify.json`.
+- Status is fetched every minute from the public [status.claude.com](https://status.claude.com) API. No tokens are touched. For work notes, only the first line of the answer (40 chars), the name of the tool waiting for you and the desktop app session id are kept in `notify.json`. Session states (`sessions/*.json`) hold only the state, the project folder name and the session id.
 - If the bridge is already installed, update it with `claude plugin update usage-status-bridge@claude-mascot`.
 - The default character art was generated with ChatGPT.
 
