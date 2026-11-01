@@ -82,6 +82,18 @@ test('a finished turn tells the mascot the project and the first line of the ans
   expect(out.project).toBe('MyGame')
   expect(out.text).toBe('끌기 기능을 main에 커밋했습니다(1f0bdb6).')
   expect(typeof out.at).toBe('string')
+  expect(out.session).toBe(null)
+})
+
+test('a Desktop session leaves its session id so the bubble can open it', async ($, on) => {
+  const written: Array<{ path: string; text: string }> = []
+  engine(on, written, { CLAUDE_CODE_HOST_SESSION_ID: 'local_68b6aad6-d739-4e95-9871-21cf43a7acb3' })
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.turn.complete({ ...TURN, answer: '완료' })
+
+  expect(written.length).toBe(1)
+  expect(JSON.parse(written[0].text).session).toBe('local_68b6aad6-d739-4e95-9871-21cf43a7acb3')
 })
 
 test('a long first line is cut short for the speech bubble', async ($, on) => {

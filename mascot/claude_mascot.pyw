@@ -7,6 +7,7 @@
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
 # 작업 완료 알림: Claude Code 턴이 끝나면(브리지가 notify.json 을 씀) 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을 말한다. 오른쪽 클릭 「작업 완료 알림」으로 끈다.
+#   Desktop 앱 세션이면 그 말풍선을 눌러 해당 세션을 연다(claude://code/continue?session=local_…).
 # 인터랙션: 머리 위에서 문지르기 = 쓰다듬기(pet, 아플 때는 sick_pet 또는 얼음주머니 애니메이션), 10분 안 건드리면 잠들기(sleep),
 #   켜질 때·시간대 첫 클릭 = 인사, mascot.json 의 birthdays 에 오늘(MM-DD)이 있으면 생일 축하(birthday), 「완전히 종료」 = 잘자요(goodnight) 뒤 종료.
 # 캐릭터: ~/.claude/claude-status/characters/<이름>/ 에 같은 이름의 PNG 를 넣고 트레이 「캐릭터」에서 고른다. 빠진 그림은 기본 그림으로 채운다.
@@ -18,6 +19,7 @@ import glob
 import json
 import os
 import random
+import re
 import sys
 import threading
 import time
@@ -34,7 +36,9 @@ IMAGE_DIR = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspat
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".claude", "claude-status")
 USAGE_GLOB = os.path.join(DATA_DIR, "usage-*.json")
 CONFIG_PATH = os.path.join(DATA_DIR, "mascot.json")
-NOTIFY_PATH = os.path.join(DATA_DIR, "notify.json")  # usage-status-bridge 가 Claude Code 턴이 끝날 때마다 쓴다: {at, project, text}
+NOTIFY_PATH = os.path.join(DATA_DIR, "notify.json")  # usage-status-bridge 가 Claude Code 턴이 끝날 때마다 쓴다: {at, project, text, session}
+SESSION_LINK = "claude://code/continue?session="  # Claude 데스크톱 앱이 이 세션(local_…)을 연다
+SESSION_ID = re.compile(r"local_[A-Za-z0-9-]{1,64}")  # 앱이 받는 세션 ID 모양. 파일에서 읽은 값이라 이 모양일 때만 연다
 CHARACTERS_DIR = os.path.join(DATA_DIR, "characters")  # 캐릭터마다 하위 폴더 하나, 안에 IMAGE_NAMES 와 같은 이름의 PNG
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"  # 「Windows 시작 시 실행」: 현재 사용자 시작 프로그램 목록
 RUN_NAME = "ClaudeMascot"
@@ -502,7 +506,10 @@ class Mascot:
             self.notified = at
             if self.notify_enabled.get() and not self.closing and self.root.state() != "withdrawn":
                 headline = f"{note.get('project') or 'Claude'} 작업 완료했어요!"
-                self.speak(body="\n".join(filter(None, (headline, note.get("text")))))
+                # Desktop 앱 세션이면 말풍선을 눌러 그 세션으로 간다(CLI 세션은 session 이 없어 그냥 닫힌다)
+                session = note.get("session")
+                link = SESSION_LINK + session if isinstance(session, str) and SESSION_ID.fullmatch(session) else None
+                self.speak(body="\n".join(filter(None, (headline, note.get("text")))), link=link)
         self.root.after(NOTIFY_POLL_MS, self.poll_notify)
 
     def fetch_status(self):
@@ -612,8 +619,8 @@ class Mascot:
         self.root.after(2000, self.keep_on_top)
 
     # 말풍선
-    def speak(self, headline=None, body=None, duration=None):
-        # body 가 없으면 장애 내용 + 사용량을 말한다. headline 은 그 위 첫 줄
+    def speak(self, headline=None, body=None, duration=None, link=None):
+        # body 가 없으면 장애 내용 + 사용량을 말한다. headline 은 그 위 첫 줄. link 가 있으면 말풍선을 누를 때 그 주소를 연다
         self.stop_walk()
         self.ice_frame = None
         self.petting = self.celebrating = False  # 쓰다듬기·생일 한마디 중에 다른 말풍선이 뜨면 pet·birthday 가 남지 않게 푼다
@@ -626,8 +633,9 @@ class Mascot:
         bubble.overrideredirect(True)
         bubble.attributes("-topmost", True)
         bubble.configure(bg="#3a3a3a", padx=1, pady=1)
-        tk.Label(bubble, text=text, bg="white", fg="#222", font=("Segoe UI", 9), justify="left", wraplength=340, padx=10, pady=6).pack()
-        bubble.bind("<ButtonRelease-1>", lambda e: self.stop_talking(bubble))
+        tk.Label(bubble, text=text, bg="white", fg="#222", font=("Segoe UI", 9), justify="left", wraplength=340, padx=10, pady=6,
+                 cursor="hand2" if link else "").pack()
+        bubble.bind("<ButtonRelease-1>", lambda e: (link and os.startfile(link), self.stop_talking(bubble)))
         bubble.update_idletasks()
         left, top, right, _ = self.work_area()
         width, height = bubble.winfo_reqwidth(), bubble.winfo_reqheight()

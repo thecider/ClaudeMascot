@@ -46,10 +46,12 @@ function firstLine(answer: string): string {
 }
 
 // 턴이 끝날 때마다 ~/.claude/claude-status/notify.json 에 프로젝트 이름과 한 줄 요약을 쓴다. 마스코트가 보고 「작업 완료」 말풍선을 띄운다
+// session: Desktop 앱 세션 ID(local_…, 환경변수 CLAUDE_CODE_HOST_SESSION_ID). 말풍선을 누르면 마스코트가 이 세션을 연다. CLI 세션은 null
 async function writeNotify($: any, answer: string): Promise<void> {
   const root = await home($)
   const project = (await $.session.cwd()).split(/[\\/]/).filter(Boolean).pop() ?? ''
-  const out = { at: new Date().toISOString(), project, text: firstLine(answer) }
+  const session = (await $.env.get('CLAUDE_CODE_HOST_SESSION_ID')) || null
+  const out = { at: new Date().toISOString(), project, text: firstLine(answer), session }
   await $.fs.write(`${root}/.claude/claude-status/notify.json`, JSON.stringify(out, null, 1))
 }
 
