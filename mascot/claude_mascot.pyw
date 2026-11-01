@@ -1,13 +1,14 @@
 # Claude Mascot: 바탕화면에 SD 캐릭터를 띄워 Claude 상태와 사용량에 반응한다 (Windows 전용).
 # 데이터: ~/.claude/claude-status/usage-<계정>.json (Claude Code 플러그인 usage-status-bridge 가 쓴다, 없으면 상태만), status.claude.com 공개 API.
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
-# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/작업 완료 알림/숨기기/완전히 종료).
+# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/작업 알림/최근 알림/숨기기/완전히 종료).
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
-# 작업 완료 알림: Claude Code 턴이 끝나면(브리지가 notify.json 을 씀) 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을 말한다. 오른쪽 클릭 「작업 완료 알림」으로 끈다.
-#   Desktop 앱 세션이면 그 말풍선을 눌러 해당 세션을 연다(claude://code/continue?session=local_…).
+# 작업 알림(브리지가 notify.json 을 씀): Claude Code 턴이 끝나면 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄,
+#   권한 확인·질문으로 사람의 답을 기다리면 waiting 그림으로 「<프로젝트> 확인이 필요해요!」. 오른쪽 클릭 「작업 알림」으로 끈다.
+#   Desktop 앱 세션이면 그 말풍선을 눌러 해당 세션을 연다(claude://code/continue?session=local_…). 「최근 알림」에 최근 10개가 남는다.
 # 인터랙션: 머리 위에서 문지르기 = 쓰다듬기(pet, 아플 때는 sick_pet 또는 얼음주머니 애니메이션), 10분 안 건드리면 잠들기(sleep),
 #   켜질 때·시간대 첫 클릭 = 인사, mascot.json 의 birthdays 에 오늘(MM-DD)이 있으면 생일 축하(birthday), 「완전히 종료」 = 잘자요(goodnight) 뒤 종료.
 # 캐릭터: ~/.claude/claude-status/characters/<이름>/ 에 같은 이름의 PNG 를 넣고 트레이 「캐릭터」에서 고른다. 빠진 그림은 기본 그림으로 채운다.
@@ -50,6 +51,7 @@ IDLE_MS = 30_000
 MOOD_POLL_MS = 20_000
 STATUS_POLL_MS = 60_000
 NOTIFY_POLL_MS = 2_000  # Windows 작업 완료 알림과 거의 같이 말하게 짧게 본다
+HISTORY_SIZE = 10  # 오른쪽 클릭 「최근 알림」에 남기는 개수 (메모리에만, 다시 켜면 비어 있다)
 TALK_MS = 6_000
 OUTAGE_TALK_MS = 12_000  # 장애·점검 중에는 읽을 내용이 많다
 TIRED_PERCENT = 90
@@ -68,10 +70,10 @@ WALK_DISTANCE = (60, 200)  # 한 번에 걷는 거리(px) 범위
 WALK_TICK_MS = 180  # 이 간격마다 한 프레임·WALK_STEP px (그림 보폭에 맞춘 값: 작으면 발이 미끄러져 보인다)
 WALK_STEP = 10
 IMAGE_NAMES = ("idle_1", "idle_2", "idle_3", "idle_4", "talk", "sick", "maintenance", "tired", "pet", "sleep", "birthday", "goodnight",
-               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4", "drag") + WALK_FRAMES
+               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4", "drag", "waiting") + WALK_FRAMES
 # 그림이 없으면 같은 캐릭터의 이 그림으로 (사용자 캐릭터에 다른 캐릭터가 섞여 보이지 않게, 걷는 그림이 없으면 idle_1 로 미끄러지듯)
 FALLBACK_IMAGES = {"sick_pet": "sick", "sick_ice_1": "sick", "sick_ice_2": "sick", "sick_ice_3": "sick", "sick_ice_4": "sick",
-                   "drag": "idle_1", **{name: "idle_1" for name in WALK_FRAMES}}
+                   "drag": "idle_1", "waiting": "talk", **{name: "idle_1" for name in WALK_FRAMES}}
 # 끌기: drag 그림의 후드 뒷덜미 위치(그림 너비·높이 비율). 어디를 눌렀든 이 점이 커서 아래로 와서 뒷덜미를 집어 든 것처럼 보인다
 DRAG_ANCHOR = (0.5, 0.08)
 # 아플 때 쓰다듬기: 보통은 sick_pet + 한마디, ICE_CHANCE 확률로 얼음주머니 갈아주기 애니메이션(그림, 보여 줄 ms)
@@ -336,7 +338,9 @@ class Mascot:
         self.closing = False
         self.tray_characters = []  # 트레이 메뉴를 만들 때 본 캐릭터 폴더 목록
         self.walking = None  # 걷는 중이면 [방향(1 오른쪽, -1 왼쪽), 남은 px, 프레임 번호]
-        self.notified = load_json(NOTIFY_PATH).get("at")  # 이미 말한 작업 완료 알림. 켜기 전에 끝난 작업은 말하지 않는다
+        self.notified = load_json(NOTIFY_PATH).get("at")  # 이미 말한 작업 알림. 켜기 전에 온 알림은 말하지 않는다
+        self.history = []  # 최근 작업 알림, 새것이 앞: (메뉴 한 줄 "HH:MM 프로젝트 · 완료 — 한 줄", 말풍선 내용, 세션 링크 또는 None)
+        self.pose = None  # 말하는 동안 talk 대신 보여 줄 그림(입력 대기 = waiting)
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -358,7 +362,9 @@ class Mascot:
         self.walk_enabled = tk.BooleanVar(self.root, (config or {}).get("walk", True))
         self.menu.add_checkbutton(label="걷기", variable=self.walk_enabled, command=lambda: self.save_config(walk=self.walk_enabled.get()))
         self.notify_enabled = tk.BooleanVar(self.root, (config or {}).get("notify", True))
-        self.menu.add_checkbutton(label="작업 완료 알림", variable=self.notify_enabled, command=lambda: self.save_config(notify=self.notify_enabled.get()))
+        self.menu.add_checkbutton(label="작업 알림", variable=self.notify_enabled, command=lambda: self.save_config(notify=self.notify_enabled.get()))
+        self.history_menu = tk.Menu(self.menu, tearoff=0, postcommand=self.fill_history)
+        self.menu.add_cascade(label="최근 알림", menu=self.history_menu)
         self.menu.add_command(label="숨기기", command=self.hide_window)
         self.menu.add_separator()
         self.menu.add_command(label="완전히 종료", command=self.quit)
@@ -419,7 +425,7 @@ class Mascot:
         if self.celebrating:
             return "birthday"
         if self.talking:
-            return "talk"
+            return self.pose or "talk"
         if time.monotonic() - self.last_touch >= SLEEP_MINUTES * 60:
             return "sleep"
         return "birthday" if self.birthday_names() else self.idle
@@ -498,19 +504,33 @@ class Mascot:
         self.root.after(STATUS_POLL_MS, self.poll_status)
 
     def poll_notify(self):
-        # Claude Code 턴이 끝나 notify.json 이 바뀌었으면 「<프로젝트> 작업 완료했어요!」 + 답변 첫 줄. 알림이 꺼져 있거나 숨겨져 있거나 종료 중이면 넘긴다
+        # notify.json 이 바뀌었으면: 턴이 끝남(kind done) = 「<프로젝트> 작업 완료했어요!」, 사람의 답을 기다림(waiting) = 「<프로젝트> 확인이 필요해요!」 + 한 줄.
+        # 「최근 알림」에는 늘 남기고, 말풍선은 알림이 꺼져 있거나 숨겨져 있거나 종료 중이면 넘긴다
         # (꺼져 있어도 본 것으로 친다: 다시 켰을 때 지난 알림을 뒤늦게 말하지 않게)
         note = load_json(NOTIFY_PATH)
         at = note.get("at")
         if at and at != self.notified:
             self.notified = at
+            waiting = note.get("kind") == "waiting"
+            project = note.get("project") or "Claude"
+            headline = f"{project} {'확인이 필요해요' if waiting else '작업 완료했어요'}!"
+            body = "\n".join(filter(None, (headline, note.get("text"))))
+            # Desktop 앱 세션이면 말풍선을 눌러 그 세션으로 간다(CLI 세션은 session 이 없어 그냥 닫힌다)
+            session = note.get("session")
+            link = SESSION_LINK + session if isinstance(session, str) and SESSION_ID.fullmatch(session) else None
+            label = f"{local_now():%H:%M} {project} · {'대기' if waiting else '완료'}" + (f" — {note['text']}" if note.get("text") else "")
+            self.history = [(label, body, link)] + self.history[:HISTORY_SIZE - 1]
             if self.notify_enabled.get() and not self.closing and self.root.state() != "withdrawn":
-                headline = f"{note.get('project') or 'Claude'} 작업 완료했어요!"
-                # Desktop 앱 세션이면 말풍선을 눌러 그 세션으로 간다(CLI 세션은 session 이 없어 그냥 닫힌다)
-                session = note.get("session")
-                link = SESSION_LINK + session if isinstance(session, str) and SESSION_ID.fullmatch(session) else None
-                self.speak(body="\n".join(filter(None, (headline, note.get("text")))), link=link)
+                self.speak(body=body, link=link, pose="waiting" if waiting else None)
         self.root.after(NOTIFY_POLL_MS, self.poll_notify)
+
+    def fill_history(self):
+        # 「최근 알림」을 펼칠 때마다 새로 채운다. 누르면 세션 링크가 있으면 그 세션을 열고, 없으면 그 알림을 다시 말한다
+        self.history_menu.delete(0, "end")
+        if not self.history:
+            self.history_menu.add_command(label="(아직 없음)", state="disabled")
+        for label, body, link in self.history:
+            self.history_menu.add_command(label=label, command=lambda body=body, link=link: os.startfile(link) if link else self.speak(body=body))
 
     def fetch_status(self):
         try:
@@ -619,10 +639,11 @@ class Mascot:
         self.root.after(2000, self.keep_on_top)
 
     # 말풍선
-    def speak(self, headline=None, body=None, duration=None, link=None):
-        # body 가 없으면 장애 내용 + 사용량을 말한다. headline 은 그 위 첫 줄. link 가 있으면 말풍선을 누를 때 그 주소를 연다
+    def speak(self, headline=None, body=None, duration=None, link=None, pose=None):
+        # body 가 없으면 장애 내용 + 사용량을 말한다. headline 은 그 위 첫 줄. link 가 있으면 말풍선을 누를 때 그 주소를 연다. pose 는 talk 대신 보여 줄 그림
         self.stop_walk()
         self.ice_frame = None
+        self.pose = pose
         self.petting = self.celebrating = False  # 쓰다듬기·생일 한마디 중에 다른 말풍선이 뜨면 pet·birthday 가 남지 않게 푼다
         text = body or usage_speech(self.status, load_accounts(), datetime.datetime.now(datetime.timezone.utc))
         if headline:
@@ -657,6 +678,7 @@ class Mascot:
             self.talking = False
             self.petting = self.celebrating = False
             self.ice_frame = None
+            self.pose = None
             self.show()
 
     # 쓰다듬기: 버튼을 안 누른 채 머리 위에서 좌우로 문지르면

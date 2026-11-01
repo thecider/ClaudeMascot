@@ -83,6 +83,45 @@ test('a finished turn tells the mascot the project and the first line of the ans
   expect(out.text).toBe('끌기 기능을 main에 커밋했습니다(1f0bdb6).')
   expect(typeof out.at).toBe('string')
   expect(out.session).toBe(null)
+  expect(out.kind).toBe('done')
+})
+
+const DESKTOP = { CLAUDE_CODE_HOST_SESSION_ID: 'local_68b6aad6-d739-4e95-9871-21cf43a7acb3' }
+
+test('a question waiting for the person tells the mascot to come and answer', async ($, on) => {
+  const written: Array<{ path: string; text: string }> = []
+  engine(on, written, DESKTOP)
+  on('classic.Notification', () => ({}))
+
+  await $.classic.Notification({ message: 'Claude needs your permission to use AskUserQuestion', notification_type: 'permission_prompt' })
+
+  expect(written.length).toBe(1)
+  const out = JSON.parse(written[0].text)
+  expect(out.kind).toBe('waiting')
+  expect(out.project).toBe('MyGame')
+  expect(out.text).toBe('질문에 답해 주세요')
+  expect(out.session).toBe(DESKTOP.CLAUDE_CODE_HOST_SESSION_ID)
+})
+
+test('a permission prompt names the tool waiting for a yes', async ($, on) => {
+  const written: Array<{ path: string; text: string }> = []
+  engine(on, written)
+  on('classic.Notification', () => ({}))
+
+  await $.classic.Notification({ message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt' })
+
+  expect(written.length).toBe(1)
+  expect(JSON.parse(written[0].text).text).toBe('Bash 사용 허락이 필요해요')
+})
+
+test('other notifications tell the mascot nothing', async ($, on) => {
+  const written: Array<{ path: string; text: string }> = []
+  engine(on, written)
+  on('classic.Notification', () => ({}))
+
+  await $.classic.Notification({ message: 'Claude is waiting for your input', notification_type: 'idle_prompt' })
+
+  expect(written.length).toBe(0)
 })
 
 test('a Desktop session leaves its session id so the bubble can open it', async ($, on) => {

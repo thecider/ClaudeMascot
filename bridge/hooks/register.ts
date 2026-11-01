@@ -1,5 +1,5 @@
 // ClaudeStatus 브리지: 사용량이 움직일 때마다 5시간·주간 사용률과 현재 로그인 계정을
-// ~/.claude/claude-status/usage-<계정>.json 에 쓴다. 턴이 끝나면 notify.json(프로젝트·답변 첫 줄)도 쓴다.
+// ~/.claude/claude-status/usage-<계정>.json 에 쓴다. 턴이 끝나거나 사람의 답을 기다리면 notify.json(종류·프로젝트·한 줄·세션)도 쓴다.
 // 데스크톱 마스코트(mascot/claude_mascot.pyw)가 이 파일들을 읽는다.
 // 토큰은 다루지 않는다. 계정은 환경변수 CLAUDE_CODE_USER_EMAIL(Desktop 세션), 없으면 ~/.claude.json 의 oauthAccount.emailAddress 를 읽는다.
 import type { Register, SessionRateLimit } from 'claude-code'
@@ -45,13 +45,21 @@ function firstLine(answer: string): string {
   return chars.length > NOTIFY_CHARS ? chars.slice(0, NOTIFY_CHARS).join('') + '…' : plain
 }
 
-// 턴이 끝날 때마다 ~/.claude/claude-status/notify.json 에 프로젝트 이름과 한 줄 요약을 쓴다. 마스코트가 보고 「작업 완료」 말풍선을 띄운다
+// 권한 확인 알림 문구(「Claude needs your permission to use <도구>」)에서 말풍선 한 줄을 만든다. 질문(AskUserQuestion)도 이 알림으로 온다
+function waitingLine(message: string): string {
+  const tool = /use (\S+)$/.exec(message.trim())?.[1]
+  if (tool === 'AskUserQuestion') return '질문에 답해 주세요'
+  return tool ? `${tool} 사용 허락이 필요해요` : message
+}
+
+// ~/.claude/claude-status/notify.json 에 쓴다. 마스코트가 보고 말풍선을 띄운다
+// kind: done = 턴이 끝남(「작업 완료」), waiting = 사람의 답(권한 확인·질문)을 기다림(「확인이 필요해요」)
 // session: Desktop 앱 세션 ID(local_…, 환경변수 CLAUDE_CODE_HOST_SESSION_ID). 말풍선을 누르면 마스코트가 이 세션을 연다. CLI 세션은 null
-async function writeNotify($: any, answer: string): Promise<void> {
+async function writeNotify($: any, kind: 'done' | 'waiting', text: string): Promise<void> {
   const root = await home($)
   const project = (await $.session.cwd()).split(/[\\/]/).filter(Boolean).pop() ?? ''
   const session = (await $.env.get('CLAUDE_CODE_HOST_SESSION_ID')) || null
-  const out = { at: new Date().toISOString(), project, text: firstLine(answer), session }
+  const out = { at: new Date().toISOString(), kind, project, text, session }
   await $.fs.write(`${root}/.claude/claude-status/notify.json`, JSON.stringify(out, null, 1))
 }
 
@@ -61,12 +69,23 @@ export const register: Register = (on) => {
     // 메인 대화가 답하고 끝난 턴만: 서브에이전트·중단·오류·빈 답변은 알리지 않는다
     if (e.agentId === undefined && e.reason === 'answer' && e.answer.trim()) {
       try {
-        await writeNotify($, e.answer)
+        await writeNotify($, 'done', firstLine(e.answer))
       } catch {
         // 무시
       }
     }
     return result
+  })
+  // 권한 확인·질문이 몇 초 넘게 답을 못 받으면 오는 알림. auto 모드가 스스로 허락한 도구에는 오지 않는다(2026-11-01 Desktop 세션 실측)
+  on('classic.Notification', async ($, e, next) => {
+    if (e.notification_type === 'permission_prompt') {
+      try {
+        await writeNotify($, 'waiting', waitingLine(e.message))
+      } catch {
+        // 무시
+      }
+    }
+    return next(e)
   })
   on('session.start', async ($, e, next) => {
     try {
