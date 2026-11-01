@@ -1,12 +1,12 @@
 # Claude Mascot: 바탕화면에 SD 캐릭터를 띄워 Claude 상태와 사용량에 반응한다 (Windows 전용).
 # 데이터: ~/.claude/claude-status/usage-<계정>.json (Claude Code 플러그인 usage-status-bridge 가 쓴다, 없으면 상태만), status.claude.com 공개 API.
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
-# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/숨기기/완전히 종료).
+# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/작업 완료 알림/숨기기/완전히 종료).
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
-# 작업 완료 알림: Claude Code 턴이 끝나면(브리지가 notify.json 을 씀) 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을 말한다.
+# 작업 완료 알림: Claude Code 턴이 끝나면(브리지가 notify.json 을 씀) 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을 말한다. 오른쪽 클릭 「작업 완료 알림」으로 끈다.
 # 인터랙션: 머리 위에서 문지르기 = 쓰다듬기(pet, 아플 때는 sick_pet 또는 얼음주머니 애니메이션), 10분 안 건드리면 잠들기(sleep),
 #   켜질 때·시간대 첫 클릭 = 인사, mascot.json 의 birthdays 에 오늘(MM-DD)이 있으면 생일 축하(birthday), 「완전히 종료」 = 잘자요(goodnight) 뒤 종료.
 # 캐릭터: ~/.claude/claude-status/characters/<이름>/ 에 같은 이름의 PNG 를 넣고 트레이 「캐릭터」에서 고른다. 빠진 그림은 기본 그림으로 채운다.
@@ -353,6 +353,8 @@ class Mascot:
         self.menu.add_command(label="장애 상세 열기", command=lambda: webbrowser.open(incident_url(self.status)))
         self.walk_enabled = tk.BooleanVar(self.root, (config or {}).get("walk", True))
         self.menu.add_checkbutton(label="걷기", variable=self.walk_enabled, command=lambda: self.save_config(walk=self.walk_enabled.get()))
+        self.notify_enabled = tk.BooleanVar(self.root, (config or {}).get("notify", True))
+        self.menu.add_checkbutton(label="작업 완료 알림", variable=self.notify_enabled, command=lambda: self.save_config(notify=self.notify_enabled.get()))
         self.menu.add_command(label="숨기기", command=self.hide_window)
         self.menu.add_separator()
         self.menu.add_command(label="완전히 종료", command=self.quit)
@@ -492,12 +494,13 @@ class Mascot:
         self.root.after(STATUS_POLL_MS, self.poll_status)
 
     def poll_notify(self):
-        # Claude Code 턴이 끝나 notify.json 이 바뀌었으면 「<프로젝트> 작업 완료했어요!」 + 답변 첫 줄. 숨겨져 있거나 종료 중이면 넘긴다
+        # Claude Code 턴이 끝나 notify.json 이 바뀌었으면 「<프로젝트> 작업 완료했어요!」 + 답변 첫 줄. 알림이 꺼져 있거나 숨겨져 있거나 종료 중이면 넘긴다
+        # (꺼져 있어도 본 것으로 친다: 다시 켰을 때 지난 알림을 뒤늦게 말하지 않게)
         note = load_json(NOTIFY_PATH)
         at = note.get("at")
         if at and at != self.notified:
             self.notified = at
-            if not self.closing and self.root.state() != "withdrawn":
+            if self.notify_enabled.get() and not self.closing and self.root.state() != "withdrawn":
                 headline = f"{note.get('project') or 'Claude'} 작업 완료했어요!"
                 self.speak(body="\n".join(filter(None, (headline, note.get("text")))))
         self.root.after(NOTIFY_POLL_MS, self.poll_notify)

@@ -12,7 +12,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 ### 할 수 있는 것
 - **상태 표시**: Claude 장애면 아픈 모습, 점검이면 점검 모습, 사용량이 90% 이상이면 지친 모습으로 바뀝니다. 장애가 나거나 복구되면 스스로 말풍선으로 알려 줍니다.
 - **클릭**: 말풍선으로 계정별 5시간·주간 사용량(사용량 브리지 설치 시)과 장애 내용을 보여 줍니다.
-- **작업 완료 알림**: Claude Code 가 한 턴을 끝낼 때마다 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을 말합니다(사용량 브리지 0.2.0 이상).
+- **작업 완료 알림**: Claude Code 가 한 턴을 끝낼 때마다 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을 말합니다(사용량 브리지 0.2.0 이상). 오른쪽 클릭 → **작업 완료 알림** 체크를 풀면 말하지 않습니다.
 - **끌기**: 후드 뒷덜미를 잡혀 들린 채 원하는 곳으로 옮겨집니다. 위치는 기억합니다.
 - **쓰다듬기**: 버튼을 누르지 않은 채 머리 위에서 좌우로 문지르면 좋아합니다. 아플 때 쓰다듬으면 가끔 얼음주머니를 갈아 줍니다.
 - **걷기**: 가만히 두면 가끔 좌우로 몇 걸음 걷습니다. 클릭하면 멈추고, 오른쪽 클릭 → **걷기** 체크를 풀면 걷지 않습니다.
@@ -81,7 +81,7 @@ build.bat
 ### What it does
 - **Status**: looks sick during a Claude outage, shows a maintenance pose during maintenance, and looks tired at 90%+ usage. It speaks up on its own when an outage starts or ends.
 - **Click**: a speech bubble with per-account 5-hour / weekly usage (with the usage bridge installed) and incident details.
-- **Work done**: each time Claude Code finishes a turn, it says "<project> 작업 완료했어요!" (work done) with the first line of the answer (usage bridge 0.2.0+).
+- **Work done**: each time Claude Code finishes a turn, it says "<project> 작업 완료했어요!" (work done) with the first line of the answer (usage bridge 0.2.0+). Uncheck right-click → **작업 완료 알림** (Work-done note) to turn it off.
 - **Drag**: pick it up by the back of its hood and move it anywhere; the position is remembered.
 - **Pet**: rub left and right over its head without pressing a button. Pet it while it's sick and it sometimes gets a fresh ice bag.
 - **Walk**: when left alone it sometimes takes a few steps left or right. Click to stop it; uncheck right-click → **걷기** (Walk) to turn walking off.
