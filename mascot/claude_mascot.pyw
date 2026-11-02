@@ -4,6 +4,7 @@
 # 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/게임하기/날씨/걷기/작업 알림/스케줄 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
 # 날씨: 오른쪽 클릭 「날씨 > 위치 정하기」로 도시를 찾아 후보 중 고르면(기본은 안 정함 = 날씨 안 말함) 하루 한 번 5시 이후 처음 켜질 때·처음 한가할 때 인사와 함께 오늘 날씨,
 #   비·눈 확률이 높으면 우산 한마디. 「날씨 > 오늘 날씨」로 언제든 다시 묻는다. 날씨는 Open-Meteo(키 없음).
+#   날씨를 말하는 동안은 우산(비)·눈사람(눈)·귀마개와 장갑(체감 한파)·선풍기(체감 폭염) 그림으로 말한다.
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
 # 식사 주기: 오른쪽 클릭 「식사 주기 > 햄버거」를 누르면 햄버거를 먹는다(eat_1~6, 약 7초). 누르거나 말하면 멈춘다.
 # 게임하기: 오른쪽 클릭 「게임하기」 = 별도 창에서 플래피 버드식 미니 게임(클릭·스페이스 = 날아오르기, Esc = 그만). 최고 점수는 mascot.json 의 game_best.
@@ -86,6 +87,10 @@ WEATHER_NAMES = {0: "맑음", 1: "대체로 맑음", 2: "구름 조금", 3: "흐
                  71: "약한 눈", 73: "눈", 75: "많은 눈", 77: "싸락눈", 80: "소나기", 81: "소나기", 82: "강한 소나기",
                  85: "눈", 86: "많은 눈", 95: "뇌우", 96: "우박 뇌우", 99: "우박 뇌우"}
 SNOW_CODES = {71, 73, 75, 77, 85, 86}
+# 날씨를 말하는 동안 talk 대신 보여 줄 그림. 하루 하나: 눈 > 비 > 한파 > 폭염 (한파·폭염은 체감온도, 폭염주의보가 체감 33°C 기준)
+WEATHER_FRAMES = ("weather_rain", "weather_snow", "weather_cold", "weather_hot")
+COLD_FEELS = -10  # 체감 최저가 이 이하면 귀마개·장갑
+HOT_FEELS = 33  # 체감 최고가 이 이상이면 선풍기
 
 HEIGHT = 160
 IDLE_MS = 30_000
@@ -121,10 +126,11 @@ WORKING_FRAMES = ("working_1", "working_2", "working_3", "working_4")
 WORKING_SEQUENCE = (("working_1", 300), ("working_2", 300), ("working_1", 300), ("working_2", 300), ("working_3", 250),
                     ("working_2", 300), ("working_3", 250), ("working_1", 300), ("working_2", 300), ("working_4", 1500))
 IMAGE_NAMES = ("idle_1", "idle_2", "idle_3", "idle_4", "talk", "sick", "maintenance", "tired", "pet", "sleep", "birthday", "goodnight",
-               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4", "drag", "waiting") + WALK_FRAMES + EAT_FRAMES + WORKING_FRAMES
+               "sick_pet", "sick_ice_1", "sick_ice_2", "sick_ice_3", "sick_ice_4", "drag", "waiting") + WALK_FRAMES + EAT_FRAMES + WORKING_FRAMES + WEATHER_FRAMES
 # 그림이 없으면 같은 캐릭터의 이 그림으로 (사용자 캐릭터에 다른 캐릭터가 섞여 보이지 않게, 걷는 그림이 없으면 idle_1 로 미끄러지듯)
 FALLBACK_IMAGES = {"sick_pet": "sick", "sick_ice_1": "sick", "sick_ice_2": "sick", "sick_ice_3": "sick", "sick_ice_4": "sick",
-                   "drag": "idle_1", "waiting": "talk", **{name: "idle_1" for name in WALK_FRAMES + EAT_FRAMES + WORKING_FRAMES}}
+                   "drag": "idle_1", "waiting": "talk", **{name: "idle_1" for name in WALK_FRAMES + EAT_FRAMES + WORKING_FRAMES},
+                   **{name: "talk" for name in WEATHER_FRAMES}}
 # 끌기: drag 그림의 후드 뒷덜미 위치(그림 너비·높이 비율). 어디를 눌렀든 이 점이 커서 아래로 와서 뒷덜미를 집어 든 것처럼 보인다
 DRAG_ANCHOR = (0.5, 0.08)
 # 아플 때 쓰다듬기: 보통은 sick_pet + 한마디, ICE_CHANCE 확률로 얼음주머니 갈아주기 애니메이션(그림, 보여 줄 ms)
@@ -363,16 +369,30 @@ def search_places(name):
 
 
 def fetch_weather(place):
-    # 오늘 날씨 {code, high, low, rain, now}. 조회 실패면 None
+    # 오늘 날씨 {code, high, low, rain, now, feels_high, feels_low}. 조회 실패면 None
     data = get_json(WEATHER_URL, {"latitude": place["lat"], "longitude": place["lon"], "timezone": "auto", "forecast_days": 1,
                                   "current": "temperature_2m",
-                                  "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"})
+                                  "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,"
+                                           "apparent_temperature_max,apparent_temperature_min"})
     try:
         daily = data["daily"]
         return {"code": daily["weather_code"][0], "high": daily["temperature_2m_max"][0], "low": daily["temperature_2m_min"][0],
-                "rain": daily["precipitation_probability_max"][0], "now": data["current"]["temperature_2m"]}
+                "rain": daily["precipitation_probability_max"][0], "now": data["current"]["temperature_2m"],
+                "feels_high": daily["apparent_temperature_max"][0], "feels_low": daily["apparent_temperature_min"][0]}
     except (TypeError, KeyError, IndexError):
         return None
+
+
+def weather_pose(weather):
+    # 말하는 동안 보여 줄 날씨 그림 이름, 해당 없으면 None (말풍선 우산 한마디와 같은 기준으로 비·눈)
+    rain, low, high = weather.get("rain"), weather.get("feels_low"), weather.get("feels_high")
+    if isinstance(rain, (int, float)) and rain >= RAIN_PERCENT:
+        return "weather_snow" if weather.get("code") in SNOW_CODES else "weather_rain"
+    if isinstance(low, (int, float)) and low <= COLD_FEELS:
+        return "weather_cold"
+    if isinstance(high, (int, float)) and high >= HOT_FEELS:
+        return "weather_hot"
+    return None
 
 
 def weather_speech(place, weather):
@@ -990,7 +1010,7 @@ class Mascot:
             self.save_config(weather_day=f"{local_now():%Y-%m-%d}")
         self.history = [(f"{local_now():%H:%M} 날씨 — {text.splitlines()[0]}", text, None)] + self.history[:HISTORY_SIZE - 1]
         if manual or (self.bubble is None and self.game is None and not self.closing and self.root.state() != "withdrawn"):
-            self.speak(headline=greeting, body=text)
+            self.speak(headline=greeting, body=text, pose=weather_pose(weather))
 
     def open_picker(self):
         if self.picker is not None:
