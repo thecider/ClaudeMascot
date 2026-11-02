@@ -24,6 +24,8 @@ jobs:
           git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME" > title.txt
           git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME" > notes.md
           test -s title.txt || echo "$GITHUB_REF_NAME" > title.txt
+          # exe 가 자기 버전을 알아야 업데이트를 확인한다: build.bat 이 이 파일을 exe 안에 넣는다
+          printf '%s' "$GITHUB_REF_NAME" > mascot/version.txt
 
       - uses: actions/setup-python@v5
         with:

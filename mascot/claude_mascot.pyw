@@ -6,7 +6,9 @@
 # 식사 주기: 오른쪽 클릭 「식사 주기 > 햄버거」를 누르면 햄버거를 먹는다(eat_1~6, 약 7초). 누르거나 말하면 멈춘다.
 # 게임하기: 오른쪽 클릭 「게임하기」 = 별도 창에서 플래피 버드식 미니 게임(클릭·스페이스 = 날아오르기, Esc = 그만). 최고 점수는 mascot.json 의 game_best.
 #   게임 중에는 본체를 숨기고, 알림(장애 포함)은 말풍선 없이 「최근 알림」에만 남긴다.
-# 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
+# 업데이트(릴리스 exe 만): 켜고 1분 뒤·6시간마다 GitHub 최신 릴리스를 본다. 트레이 「자동 업데이트」 꺼짐(기본) = 버전마다 한 번 「새 버전이 나왔어요」,
+#   켜짐 = 받아서 크기·SHA-256 확인 → 한가할 때 exe 이름 바꿔치기 → 새 exe 로 다시 켜져 「업데이트했어요」. 「지금 업데이트 확인」으로 바로 확인.
+# 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/자동 업데이트/지금 업데이트 확인/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
 # 사용량 알림: 5시간·주간 사용량이 75%·90% 를 넘는 순간, 경고했던 창이 초기화될 때 말한다. 오른쪽 클릭 「사용량 알림」으로 끈다.
@@ -23,10 +25,12 @@ import ctypes
 import ctypes.wintypes as wt
 import datetime
 import glob
+import hashlib
 import json
 import os
 import random
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -57,6 +61,14 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"  # 「Windows 시작 
 RUN_NAME = "ClaudeMascot"
 STATUS_URL = "https://status.claude.com/api/v2/summary.json"
 STATUS_PAGE = "https://status.claude.com"
+# 업데이트: GitHub 최신 릴리스(초안·미리보기 제외)를 본다. 받은 exe 는 릴리스가 알려 준 크기·SHA-256 과 같아야 쓴다
+RELEASE_API = "https://api.github.com/repos/thecider/ClaudeMascot/releases/latest"
+RELEASE_PAGE = "https://github.com/thecider/ClaudeMascot/releases/latest"
+DOWNLOAD_PREFIX = "https://github.com/thecider/ClaudeMascot/releases/download/"  # 이 주소에서만 받는다
+UPDATE_ASSET = "ClaudeMascot.exe"
+UPDATE_FIRST_MS = 60_000  # 켜고 이만큼 뒤 첫 확인
+UPDATE_EVERY_MS = 6 * 3_600_000
+UPDATE_RETRY_MS = 60_000  # 받아 뒀는데 바쁘면(게임·말풍선·끌기·메뉴) 이만큼 뒤 다시
 
 HEIGHT = 160
 IDLE_MS = 30_000
@@ -224,6 +236,90 @@ def launch_command():
         return f'"{sys.executable}"'
     pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     return f'"{pythonw}" "{os.path.abspath(__file__)}"'
+
+
+def app_version():
+    # 릴리스 빌드(Actions)만 exe 안에 version.txt(태그 이름)를 넣는다. 로컬 빌드·.pyw 실행은 None 이고 업데이트를 확인하지 않는다
+    if not getattr(sys, "frozen", False):
+        return None
+    try:
+        with open(os.path.join(sys._MEIPASS, "version.txt"), encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def parse_version(tag):
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", (tag or "").strip())
+    return tuple(int(n) for n in match.groups()) if match else None
+
+
+def exe_path():
+    return sys.executable
+
+
+def fetch_release():
+    # 최신 릴리스 {tag, page, url, size, digest}. 조회 실패면 None
+    request = urllib.request.Request(RELEASE_API, headers={"Accept": "application/vnd.github+json", "User-Agent": "ClaudeMascot"})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    asset = next((a for a in data.get("assets") or [] if isinstance(a, dict) and a.get("name") == UPDATE_ASSET), {})
+    return {"tag": data.get("tag_name"), "page": data.get("html_url") or RELEASE_PAGE,
+            "url": asset.get("browser_download_url"), "size": asset.get("size"), "digest": asset.get("digest")}
+
+
+def download_update(info, dest):
+    # dest 에 받고, 크기·SHA-256 이 릴리스 정보와 다르면 지운다. 쓸 수 있으면 True
+    url, digest = info.get("url") or "", info.get("digest") or ""
+    if not url.startswith(DOWNLOAD_PREFIX) or not digest.startswith("sha256:"):
+        return False
+    sha, size = hashlib.sha256(), 0
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response, open(dest, "wb") as f:
+            while chunk := response.read(1 << 16):
+                f.write(chunk)
+                sha.update(chunk)
+                size += len(chunk)
+        ok = size == info.get("size") and sha.hexdigest() == digest[len("sha256:"):]
+    except OSError:
+        ok = False
+    if not ok:
+        try:
+            os.remove(dest)
+        except OSError:
+            pass
+    return ok
+
+
+def swap_exe(exe):
+    # 실행 중인 exe 는 덮어쓸 수 없지만 이름은 바꿀 수 있다: 지금 것 → .old, 받은 .new → exe. 실패하면 되돌린다
+    new, old = exe + ".new", exe + ".old"
+    try:
+        if os.path.exists(old):
+            os.remove(old)
+        os.rename(exe, old)
+    except OSError:
+        return False
+    try:
+        os.rename(new, exe)
+    except OSError:
+        try:
+            os.rename(old, exe)
+        except OSError:
+            pass
+        return False
+    return True
+
+
+def launch_updated(exe, tag):
+    # 새 exe 를 따로 띄운다. 단일 exe(PyInstaller)는 환경 변수로 부모의 압축 푼 폴더를 물려받으므로 끊고 시작한다
+    env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
+    subprocess.Popen([exe, "--updated", tag], env=env, close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
 
 
 def autostart_enabled():
@@ -545,6 +641,11 @@ class Mascot:
         self.pose = None  # 말하는 동안 talk 대신 보여 줄 그림(입력 대기 = waiting)
         self.usage_levels = {}  # (계정, 창) → (넘은 USAGE_LEVELS 단계(아직이면 0), 초기화 시각 문자열)
         self.game = None  # 게임하기 창이 열려 있으면 Game. 그동안 본체는 숨겨 두고 알림은 「최근 알림」에만 남긴다
+        self.version = app_version()  # 릴리스 exe 의 태그(v1.8.0). None 이면 업데이트를 확인하지 않는다
+        self.auto_update = bool((config or {}).get("auto_update", False))
+        self.updating = False  # 새 exe 를 받는 중이거나 받아 두고 교체를 기다리는 중
+        # 업데이트로 다시 켜졌으면 새 버전 태그 (launch_updated 가 「--updated <태그>」로 띄운다)
+        self.updated_to = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--updated" else None
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -582,11 +683,15 @@ class Mascot:
         self.menu.add_command(label="완전히 종료", command=self.quit)
 
         # 트레이 메뉴 동작은 pystray 스레드에서 불리므로 after 로 Tk 스레드에 넘긴다
+        # 업데이트 메뉴는 버전을 아는 릴리스 exe 에만 보인다
+        update_items = (pystray.MenuItem("자동 업데이트", self.toggle_auto_update, checked=lambda item: self.auto_update),
+                        pystray.MenuItem("지금 업데이트 확인", lambda: self.root.after(0, self.check_update, True))) if self.version else ()
         self.tray = pystray.Icon("ClaudeMascot", tray_image(self.character), "Claude 마스코트", pystray.Menu(
             pystray.MenuItem("보이기", lambda: self.root.after(0, self.show_window), default=True),
             pystray.MenuItem("숨기기", lambda: self.root.after(0, self.hide_window)),
             pystray.MenuItem("캐릭터", pystray.Menu(self.character_items)),
             pystray.MenuItem("Windows 시작 시 실행", self.toggle_autostart, checked=lambda item: autostart_enabled()),
+            *update_items,
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("완전히 종료", lambda: self.root.after(0, self.quit)),
         ))
@@ -610,6 +715,10 @@ class Mascot:
         self.keep_on_top()
         self.root.after(1000, self.greet_on_start)
         self.root.after(random.randint(*WALK_EVERY_MS), self.maybe_walk)
+        if self.version:
+            self.cleanup_update()
+            self.root.after(5000, self.cleanup_update)  # 업데이트 직후면 옛 프로세스가 아직 .old 를 잡고 있을 수 있다
+            self.root.after(UPDATE_FIRST_MS, self.poll_update)
 
     def work_area(self):
         rect = wt.RECT()
@@ -688,7 +797,12 @@ class Mascot:
     def greet_on_start(self):
         # 이미 말풍선(장애 알림 등)이 떠 있으면 건너뛴다: take_greeting 을 부르지 않아야 그 인사가 첫 클릭으로 넘어간다
         # 생일이면 생일 축하가 먼저다. 시간대 인사는 첫 클릭으로 넘어간다
-        if self.bubble is not None or self.greet_birthday():
+        if self.bubble is not None:
+            return
+        if self.updated_to:
+            self.speak(body=f"{self.updated_to} 버전으로 업데이트했어요!")
+            return
+        if self.greet_birthday():
             return
         greeting = self.take_greeting()
         if greeting:
@@ -898,6 +1012,85 @@ class Mascot:
         self.tray.update_menu()
         self.shown = None
         self.show()
+
+    # 업데이트: 켜짐 = 받아서 해시 확인 → 한가할 때 교체·재시작, 꺼짐(기본) = 버전마다 한 번 「새 버전이 나왔어요」(누르면 릴리스 페이지)
+    def toggle_auto_update(self):
+        # pystray 스레드에서 불린다
+        self.auto_update = not self.auto_update
+        self.root.after(0, lambda: self.save_config(auto_update=self.auto_update))
+        self.tray.update_menu()
+        if self.auto_update:
+            self.root.after(0, self.check_update)
+
+    def poll_update(self):
+        self.check_update()
+        self.root.after(UPDATE_EVERY_MS, self.poll_update)
+
+    def check_update(self, manual=False):
+        if not self.version:
+            return
+        threading.Thread(target=lambda: self.root.after(0, self.got_release, fetch_release(), manual), daemon=True).start()
+
+    def got_release(self, info, manual):
+        latest, mine = parse_version((info or {}).get("tag")), parse_version(self.version)
+        if not (latest and mine and latest > mine):
+            if manual:
+                self.speak(body="업데이트를 확인하지 못했어요" if info is None else f"최신 버전이에요 ({self.version})")
+            return
+        if self.updating:
+            return
+        if self.auto_update:
+            self.updating = True
+            threading.Thread(target=lambda: self.root.after(0, self.downloaded, info, download_update(info, exe_path() + ".new")), daemon=True).start()
+            return
+        self.notify_update(info, manual)
+
+    def downloaded(self, info, ok):
+        if not ok:
+            self.updating = False
+            self.notify_update(info, True)
+            return
+        self.apply_update(info)
+
+    def apply_update(self, info):
+        if self.closing:
+            return
+        if self.game is not None or self.bubble is not None or self.press is not None or self.menu_open:
+            self.root.after(UPDATE_RETRY_MS, self.apply_update, info)
+            return
+        exe = exe_path()
+        if not swap_exe(exe):
+            self.updating = False
+            self.notify_update(info, True)
+            return
+        try:
+            launch_updated(exe, info["tag"])
+        except OSError:
+            # 교체는 됐다: 다음에 켤 때 새 버전으로 뜬다
+            self.updating = False
+            self.speak(body=f"{info['tag']} 버전을 받아 뒀어요. 다시 켜면 바뀌어요")
+            return
+        self.closing = True
+        self.finish_quit()
+
+    def notify_update(self, info, force):
+        # 같은 버전은 한 번만 (force = 지금 확인을 눌렀거나 자동 교체에 실패했을 때)
+        tag = info["tag"]
+        if not force and (read_config() or {}).get("update_notified") == tag:
+            return
+        self.save_config(update_notified=tag)
+        body = f"새 버전이 나왔어요! ({tag})\n누르면 받는 곳을 열어요"
+        self.history = [(f"{local_now():%H:%M} 새 버전 {tag}", body, info.get("page"))] + self.history[:HISTORY_SIZE - 1]
+        if self.game is None and not self.closing and self.root.state() != "withdrawn":
+            self.speak(body=body, link=info.get("page"))
+
+    def cleanup_update(self):
+        # 지난 업데이트가 남긴 옛 exe 와 덜 받은 파일을 치운다
+        for path in (exe_path() + ".old", exe_path() + ".new"):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     def toggle_autostart(self):
         # pystray 스레드에서 불린다. 레지스트리만 바꾸므로 Tk 스레드로 넘길 필요가 없다. 체크 표시는 메뉴를 다시 만들어야 바뀐다
@@ -1163,10 +1356,27 @@ class Mascot:
         self.save_config(x=self.x, y=self.y)
 
 
+kernel32 = ctypes.windll.kernel32
+kernel32.CreateMutexW.restype = wt.HANDLE
+kernel32.CloseHandle.argtypes = [wt.HANDLE]
+
+
+def single_instance(name, wait_s):
+    # 이름 있는 뮤텍스를 처음 만든 프로세스만 돈다. 잡으면 핸들(프로세스가 끝날 때 풀린다), wait_s 초 안에 못 잡으면 None
+    deadline = time.monotonic() + wait_s
+    while True:
+        handle = kernel32.CreateMutexW(None, False, name)
+        if kernel32.GetLastError() != 183:  # ERROR_ALREADY_EXISTS
+            return handle
+        kernel32.CloseHandle(handle)
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.25)
+
+
 def main():
-    # 이미 떠 있으면 바로 끝낸다
-    ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\ClaudeStatusMascot")
-    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+    # 이미 떠 있으면 바로 끝낸다. 업데이트로 켜졌으면 옛 프로세스가 아직 끝나는 중일 수 있어 잠깐 기다린다
+    if single_instance("Local\\ClaudeStatusMascot", 10 if "--updated" in sys.argv else 0) is None:
         return
     Mascot().root.mainloop()
 

@@ -3,3 +3,4 @@ bridge/tsconfig.json
 build/
 dist/
 *.spec
+mascot/version.txt

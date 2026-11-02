@@ -25,7 +25,8 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 - **식사 주기**: 오른쪽 클릭 → **식사 주기** → **햄버거**를 누르면 햄버거를 냠냠 먹습니다. 클릭하면 멈춥니다.
 - **게임하기**: 오른쪽 클릭 → **게임하기**를 누르면 작은 게임 창이 뜹니다. 클릭(또는 스페이스)하면 캐릭터가 날아오르고, 기둥 틈을 지날 때마다 1점입니다. Esc나 창 닫기로 그만합니다. 최고 점수를 기억하고, 게임하는 동안 온 알림은 말풍선 없이 「최근 알림」에 쌓입니다.
 - **잠들기·인사·생일**: 10분 동안 안 건드리면 잠들고, 아침·점심·저녁에 인사하고, 생일을 축하해 줍니다.
-- **트레이 메뉴**: 보이기 / 숨기기 / 캐릭터 / Windows 시작 시 실행 / 완전히 종료
+- **업데이트**: 새 버전이 나오면 「새 버전이 나왔어요」라고 알려 주고, 말풍선을 누르면 받는 곳이 열립니다. 트레이 → **자동 업데이트** 를 켜 두면 알아서 받아 바꾸고 다시 켜집니다(받은 파일은 릴리스의 SHA-256 과 맞춰 봅니다). v1.8.0 부터 들어 있어서, 그 전 버전은 한 번만 직접 받아 주세요.
+- **트레이 메뉴**: 보이기 / 숨기기 / 캐릭터 / Windows 시작 시 실행 / 자동 업데이트 / 지금 업데이트 확인 / 완전히 종료
 
 ### 설치
 1. [Releases](https://github.com/thecider/ClaudeMascot/releases)에서 `ClaudeMascot.exe` 를 받아 아무 폴더에 두고 실행합니다.
@@ -121,7 +122,8 @@ build.bat
 - **Feed**: right-click → **식사 주기** (Feed) → **햄버거** (Hamburger) and it munches a hamburger. Click to stop it.
 - **Mini game**: right-click → **게임하기** (Play a game) opens a small game window. Click (or press Space) to fly up; each gap you pass is a point. Press Esc or close the window to stop. Your best score is kept, and notifications that arrive while you play go to recent notifications without a bubble.
 - **Sleep, greetings, birthdays**: falls asleep after 10 idle minutes, greets you in the morning / at lunch / in the evening, and celebrates birthdays.
-- **Tray menu**: Show / Hide / Character / Run at Windows startup / Quit. (The UI text is Korean.)
+- **Updates**: when a new version is out it tells you, and clicking the bubble opens the download page. Turn on tray → **자동 업데이트** (Auto update) and it downloads, swaps and restarts by itself (the download is checked against the release's SHA-256). This ships in v1.8.0, so older versions need one manual download.
+- **Tray menu**: Show / Hide / Character / Run at Windows startup / Auto update / Check for updates now / Quit. (The UI text is Korean.)
 
 ### Install
 1. Download `ClaudeMascot.exe` from [Releases](https://github.com/thecider/ClaudeMascot/releases), put it in any folder and run it.
