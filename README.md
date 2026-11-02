@@ -19,7 +19,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 - **끌기**: 후드 뒷덜미를 잡혀 들린 채 원하는 곳으로 옮겨집니다. 위치는 기억합니다.
 - **쓰다듬기**: 버튼을 누르지 않은 채 머리 위에서 좌우로 문지르면 좋아합니다. 아플 때 쓰다듬으면 가끔 얼음주머니를 갈아 줍니다.
 - **걷기**: 가만히 두면 가끔 좌우로 몇 걸음 걷습니다. 클릭하면 멈추고, 오른쪽 클릭 → **걷기** 체크를 풀면 걷지 않습니다.
-- **햄버거**: 가만히 두면 가끔(1.5~4분마다) 햄버거를 냠냠 먹습니다. 클릭하면 멈춥니다.
+- **식사 주기**: 오른쪽 클릭 → **식사 주기** → **햄버거**를 누르면 햄버거를 냠냠 먹습니다. 클릭하면 멈춥니다.
 - **잠들기·인사·생일**: 10분 동안 안 건드리면 잠들고, 아침·점심·저녁에 인사하고, 생일을 축하해 줍니다.
 - **트레이 메뉴**: 보이기 / 숨기기 / 캐릭터 / Windows 시작 시 실행 / 완전히 종료
 
@@ -95,7 +95,7 @@ build.bat
 - **Drag**: pick it up by the back of its hood and move it anywhere; the position is remembered.
 - **Pet**: rub left and right over its head without pressing a button. Pet it while it's sick and it sometimes gets a fresh ice bag.
 - **Walk**: when left alone it sometimes takes a few steps left or right. Click to stop it; uncheck right-click → **걷기** (Walk) to turn walking off.
-- **Hamburger**: when left alone it sometimes (every 1.5–4 minutes) munches a hamburger. Click to stop it.
+- **Feed**: right-click → **식사 주기** (Feed) → **햄버거** (Hamburger) and it munches a hamburger. Click to stop it.
 - **Sleep, greetings, birthdays**: falls asleep after 10 idle minutes, greets you in the morning / at lunch / in the evening, and celebrates birthdays.
 - **Tray menu**: Show / Hide / Character / Run at Windows startup / Quit. (The UI text is Korean.)
 

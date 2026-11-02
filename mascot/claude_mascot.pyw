@@ -1,9 +1,9 @@
 # Claude Mascot: 바탕화면에 SD 캐릭터를 띄워 Claude 상태와 사용량에 반응한다 (Windows 전용).
 # 데이터: ~/.claude/claude-status/usage-<계정>.json (Claude Code 플러그인 usage-status-bridge 가 쓴다, 없으면 상태만), status.claude.com 공개 API.
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
-# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/걷기/작업 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
+# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/걷기/작업 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
-# 햄버거: 한가할 때 가끔(1.5~4분마다) 햄버거를 먹는다(eat_1~6, 약 5초). 누르거나 말하면 멈춘다.
+# 식사 주기: 오른쪽 클릭 「식사 주기 > 햄버거」를 누르면 햄버거를 먹는다(eat_1~6, 약 7초). 누르거나 말하면 멈춘다.
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
@@ -77,11 +77,10 @@ WALK_EVERY_MS = (20_000, 60_000)  # 이 사이 무작위 간격으로 걸을지 
 WALK_DISTANCE = (60, 200)  # 한 번에 걷는 거리(px) 범위
 WALK_TICK_MS = 180  # 이 간격마다 한 프레임·WALK_STEP px (그림 보폭에 맞춘 값: 작으면 발이 미끄러져 보인다)
 WALK_STEP = 10
-# 햄버거 먹기: 한가할 때 EAT_EVERY_MS 사이 무작위 간격으로 한 번씩 (그림, 보여 줄 ms). 들고 → 한 입 → 오물오물 두 번 → 한 입 더 → 만족
+# 햄버거 먹기: 「식사 주기 > 햄버거」를 누를 때 한 번 (그림, 보여 줄 ms). 들고 → 한 입 → 오물오물 두 번 → 한 입 더 → 만족(다 먹고 2초 더 머문다)
 EAT_FRAMES = ("eat_1", "eat_2", "eat_3", "eat_4", "eat_5", "eat_6")
-EAT_EVERY_MS = (90_000, 240_000)
 EAT_SEQUENCE = (("eat_1", 800), ("eat_2", 450), ("eat_3", 350), ("eat_4", 350), ("eat_3", 350), ("eat_4", 350),
-                ("eat_2", 450), ("eat_3", 350), ("eat_4", 350), ("eat_5", 700), ("eat_6", 1000))
+                ("eat_2", 450), ("eat_3", 350), ("eat_4", 350), ("eat_5", 700), ("eat_6", 3000))
 # 작업 중: 메인 대화 턴이 도는 세션이 하나라도 있으면 평상시 그림 대신 이 순서를 되풀이한다(그림, 보여 줄 ms). 타닥타닥 → 빠르게 → 잠깐 쉬며 뿌듯
 WORKING_FRAMES = ("working_1", "working_2", "working_3", "working_4")
 WORKING_SEQUENCE = (("working_1", 300), ("working_2", 300), ("working_1", 300), ("working_2", 300), ("working_3", 250),
@@ -406,6 +405,9 @@ class Mascot:
         self.menu = tk.Menu(self.root, tearoff=0)
         self.menu.add_command(label="사용량 말하기", command=self.speak_clicked)
         self.menu.add_command(label="장애 상세 열기", command=lambda: webbrowser.open(incident_url(self.status)))
+        self.feed_menu = tk.Menu(self.menu, tearoff=0)
+        self.feed_menu.add_command(label="햄버거", command=self.feed)
+        self.menu.add_cascade(label="식사 주기", menu=self.feed_menu)
         self.walk_enabled = tk.BooleanVar(self.root, (config or {}).get("walk", True))
         self.menu.add_checkbutton(label="걷기", variable=self.walk_enabled, command=lambda: self.save_config(walk=self.walk_enabled.get()))
         self.notify_enabled = tk.BooleanVar(self.root, (config or {}).get("notify", True))
@@ -447,7 +449,6 @@ class Mascot:
         self.keep_on_top()
         self.root.after(1000, self.greet_on_start)
         self.root.after(random.randint(*WALK_EVERY_MS), self.maybe_walk)
-        self.root.after(random.randint(*EAT_EVERY_MS), self.maybe_eat)
 
     def work_area(self):
         rect = wt.RECT()
@@ -457,7 +458,7 @@ class Mascot:
     # 그리기
     def current(self):
         # 우선순위: 잘자요 > 끌기 > 아플 때 쓰다듬기(얼음주머니·sick_pet) > 장애·점검·피곤 > 걷기 > 햄버거 먹기 > 쓰다듬기 > 생일 축하 말풍선 > 말하기 > 작업 중 > 잠 > 생일 > 평상시
-        # 작업 중에는 평상시 그림이 아니라서 걷기·햄버거가 시작되지 않고 잠들지도 않는다
+        # 작업 중에는 평상시 그림이 아니라서 걷기가 시작되지 않고 잠들지도 않는다
         # 장애·점검·피곤 이미지는 말하는 중에도 유지한다: 아픈 모습이 바로 보여야 직관적이다. talk 는 평상시에 말할 때만
         # 끌기는 아플 때도 drag: 들려 가는 동안은 어미 고양이에게 물린 새끼처럼 평온한 얼굴로 보인다
         if self.closing:
@@ -889,14 +890,12 @@ class Mascot:
         self.save_config(x=self.x, y=self.y)
         self.show()
 
-    # 햄버거 먹기: 걷기와 같은 한가할 때(걷기 체크와는 상관없이)만 시작해 EAT_SEQUENCE 를 한 번 돈다. 누르거나 말하면 멈춘다
-    def maybe_eat(self):
-        if (self.eating is None and not self.walking and not self.closing and self.bubble is None and self.press is None
-                and not self.menu_open and self.root.state() != "withdrawn" and self.current() == self.idle):
-            self.eating = [0]
-            self.show()
-            self.root.after(EAT_SEQUENCE[0][1], self.eat_tick, self.eating)
-        self.root.after(random.randint(*EAT_EVERY_MS), self.maybe_eat)
+    # 식사 주기(햄버거): EAT_SEQUENCE 를 한 번 돈다. 걷던 중이면 멈추고, 먹던 중이면 처음부터. 누르거나 말하면 멈춘다
+    def feed(self):
+        self.stop_walk()
+        self.eating = [0]
+        self.show()
+        self.root.after(EAT_SEQUENCE[0][1], self.eat_tick, self.eating)
 
     def eat_tick(self, eating):
         if eating is not self.eating:  # 그 사이 멈췄다
