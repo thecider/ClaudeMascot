@@ -15,6 +15,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 - **작업 알림**(사용량 브리지 0.5.0 이상): Claude Code 가 한 턴을 끝낼 때마다 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄을, 권한 확인이나 질문으로 내 답을 기다리면 손을 들고 「<프로젝트> 확인이 필요해요!」를, 오류로 끝나면 아픈 얼굴로 「<프로젝트> 작업이 실패했어요!」를 말합니다. Claude 데스크톱 앱 세션이면 그 말풍선을 눌러 해당 세션으로 바로 갑니다. 오른쪽 클릭 → **작업 알림** 체크를 풀면 말하지 않습니다.
 - **작업 중**(사용량 브리지 0.5.0 이상): Claude Code 가 일하는 동안 노트북을 두드립니다. 클릭하면 말풍선 맨 위에 「작업 중 2 · 대기 1」처럼 세션 현황이 나옵니다.
 - **사용량 알림**(사용량 브리지 필요): 5시간·주간 사용량이 75%·90% 를 넘는 순간 알려 주고, 경고했던 사용량이 초기화되면 「다시 쓸 수 있어요」라고 말합니다. 오른쪽 클릭 → **사용량 알림** 체크를 풀면 말하지 않습니다.
+- **스케줄 알림**: 예약 작업 같은 다른 프로그램이 알림함 폴더에 넣은 알림을 말합니다(아래 「스케줄 알림 보내기」). 오른쪽 클릭 → **스케줄 알림** 체크를 풀면 말하지 않습니다.
 - **최근 알림**: 오른쪽 클릭 → **최근 알림** 에 최근 10개가 남습니다. 누르면 그 세션으로 갑니다(마스코트를 다시 켜면 비워집니다).
 - **끌기**: 후드 뒷덜미를 잡혀 들린 채 원하는 곳으로 옮겨집니다. 위치는 기억합니다.
 - **쓰다듬기**: 버튼을 누르지 않은 채 머리 위에서 좌우로 문지르면 좋아합니다. 아플 때 쓰다듬으면 가끔 얼음주머니를 갈아 줍니다.
@@ -66,6 +67,24 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 "birthdays": {"이름": "MM-DD"}
 ```
 
+### 스케줄 알림 보내기
+`%USERPROFILE%\.claude\claude-status\inbox\` 에 `.json` 파일 하나를 넣으면 알림 하나가 됩니다. 마스코트는 2초마다 보고, 이름 순서로 말한 뒤 파일을 지웁니다. 말풍선이 떠 있으면 닫힐 때까지 기다리고, 마스코트가 꺼져 있던 동안 쌓인 알림은 켤 때 말합니다.
+```json
+{"title": "백업", "text": "오늘 백업이 끝났어요", "kind": "info", "link": "C:\\backup\\log.txt"}
+```
+- `title`·`text`: 말풍선 첫 줄과 그 아래. 둘 중 하나는 있어야 합니다.
+- `kind`: `info`(기본) · `warn`(손 든 그림) · `error`(아픈 그림)
+- `link`: 말풍선이나 **최근 알림** 을 누르면 여는 파일·폴더·주소 (없어도 됩니다)
+
+쓰는 도중의 파일을 읽지 않도록 다른 확장자로 쓴 뒤 `.json` 으로 이름을 바꿉니다. PowerShell 예:
+```powershell
+$inbox = "$env:USERPROFILE\.claude\claude-status\inbox"
+New-Item -ItemType Directory -Force $inbox | Out-Null
+$name = "{0:yyyyMMdd_HHmmss}_backup" -f (Get-Date)
+@{ title = "백업"; text = "오늘 백업이 끝났어요" } | ConvertTo-Json | Out-File -Encoding utf8 "$inbox\$name.tmp"
+Move-Item "$inbox\$name.tmp" "$inbox\$name.json"
+```
+
 ### 직접 빌드
 Python 3.13 이상에서:
 ```
@@ -91,6 +110,7 @@ build.bat
 - **Work notes** (usage bridge 0.5.0+): each time Claude Code finishes a turn, it says "<project> 작업 완료했어요!" (work done) with the first line of the answer; when Claude waits for you (a permission prompt or a question), it raises its hand and says "<project> 확인이 필요해요!" (needs you); when a turn ends in an error, it looks sick and says "<project> 작업이 실패했어요!" (failed). For a Claude desktop app session, click that bubble to jump to the session. Uncheck right-click → **작업 알림** (Work notes) to turn them off.
 - **Working** (usage bridge 0.5.0+): while Claude Code works, the mascot types on a laptop. Click it to see the session count at the top of the bubble, e.g. "작업 중 2 · 대기 1" (2 working, 1 waiting).
 - **Usage alerts** (needs the usage bridge): speaks up the moment 5-hour or weekly usage passes 75% / 90%, and says "다시 쓸 수 있어요" (you can use it again) when a warned window resets. Uncheck right-click → **사용량 알림** (Usage alerts) to turn them off.
+- **Schedule notes**: speaks notes that other programs (scheduled tasks, scripts) drop into an inbox folder (see "Sending schedule notes" below). Uncheck right-click → **스케줄 알림** (Schedule notes) to turn them off.
 - **Recent notes**: right-click → **최근 알림** (Recent notes) keeps the last 10; click one to jump to its session (cleared when the mascot restarts).
 - **Drag**: pick it up by the back of its hood and move it anywhere; the position is remembered.
 - **Pet**: rub left and right over its head without pressing a button. Pet it while it's sick and it sometimes gets a fresh ice bag.
@@ -126,6 +146,24 @@ Missing files fall back to the default character, so even a single `idle_1.png` 
 Add to `birthdays` in `%USERPROFILE%\.claude\claude-status\mascot.json`:
 ```json
 "birthdays": {"Name": "MM-DD"}
+```
+
+### Sending schedule notes
+Drop one `.json` file into `%USERPROFILE%\.claude\claude-status\inbox\` per note. The mascot checks every 2 seconds, speaks the files in name order and deletes them. While a bubble is open it waits for it to close; notes that piled up while the mascot was off are spoken when it starts.
+```json
+{"title": "Backup", "text": "Today's backup finished", "kind": "info", "link": "C:\\backup\\log.txt"}
+```
+- `title` / `text`: the first line of the bubble and what follows. At least one is required.
+- `kind`: `info` (default) · `warn` (raised-hand pose) · `error` (sick pose)
+- `link` (optional): a file, folder or URL opened when you click the bubble or the note in **최근 알림** (Recent notes)
+
+So the mascot never reads a half-written file, write it under another extension and then rename it to `.json`. In PowerShell:
+```powershell
+$inbox = "$env:USERPROFILE\.claude\claude-status\inbox"
+New-Item -ItemType Directory -Force $inbox | Out-Null
+$name = "{0:yyyyMMdd_HHmmss}_backup" -f (Get-Date)
+@{ title = "Backup"; text = "Today's backup finished" } | ConvertTo-Json | Out-File -Encoding utf8 "$inbox\$name.tmp"
+Move-Item "$inbox\$name.tmp" "$inbox\$name.json"
 ```
 
 ### Build it yourself

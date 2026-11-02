@@ -1,13 +1,14 @@
 # Claude Mascot: 바탕화면에 SD 캐릭터를 띄워 Claude 상태와 사용량에 반응한다 (Windows 전용).
 # 데이터: ~/.claude/claude-status/usage-<계정>.json (Claude Code 플러그인 usage-status-bridge 가 쓴다, 없으면 상태만), status.claude.com 공개 API.
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
-# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/걷기/작업 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
+# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/걷기/작업 알림/스케줄 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
 # 식사 주기: 오른쪽 클릭 「식사 주기 > 햄버거」를 누르면 햄버거를 먹는다(eat_1~6, 약 7초). 누르거나 말하면 멈춘다.
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
 # 사용량 알림: 5시간·주간 사용량이 75%·90% 를 넘는 순간, 경고했던 창이 초기화될 때 말한다. 오른쪽 클릭 「사용량 알림」으로 끈다.
+# 스케줄 알림(알림함): 다른 프로그램(예약 작업 등)이 inbox/ 에 넣은 JSON 을 하나씩 말하고 지운다. 오른쪽 클릭 「스케줄 알림」으로 끈다.
 # 작업 알림(브리지가 notify.json 을 씀): Claude Code 턴이 끝나면 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄,
 #   권한 확인·질문으로 사람의 답을 기다리면 waiting 그림으로 「<프로젝트> 확인이 필요해요!」, 오류로 끝나면 sick 그림으로 「작업이 실패했어요!」. 오른쪽 클릭 「작업 알림」으로 끈다.
 #   브리지가 세션마다 쓰는 상태(sessions/*.json)를 보고, 작업 중인 세션이 있으면 노트북 두드리는 그림(working_1~4)을 되풀이하고, 클릭 말풍선 맨 위에 「작업 중 2 · 대기 1」을 붙인다.
@@ -40,6 +41,9 @@ IMAGE_DIR = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspat
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".claude", "claude-status")
 USAGE_GLOB = os.path.join(DATA_DIR, "usage-*.json")
 CONFIG_PATH = os.path.join(DATA_DIR, "mascot.json")
+# 알림함: 아무 프로그램이나 *.json 하나 = 알림 하나 {title, text, kind(info/warn/error), link(파일·주소)} 를 넣는다.
+# 쓰는 중인 파일을 읽지 않게 다른 확장자로 쓴 뒤 .json 으로 이름을 바꾼다. 파일 하나를 덮어쓰는 notify.json 과 달리 보내는 곳이 여럿이어도 잃지 않는다
+INBOX_DIR = os.path.join(DATA_DIR, "inbox")
 NOTIFY_PATH = os.path.join(DATA_DIR, "notify.json")  # usage-status-bridge 가 작업 알림마다 쓴다: {at, kind(done/waiting/failed), project, text, session}
 SESSIONS_GLOB = os.path.join(DATA_DIR, "sessions", "*.json")  # 브리지가 세션마다 쓴다: {at, state(working/waiting/idle/ended), project, session}
 SESSION_STALE_MINUTES = 15  # working·waiting 인데 이만큼 갱신이 없으면 비정상 종료로 보고 센다에서 뺀다
@@ -412,6 +416,8 @@ class Mascot:
         self.menu.add_checkbutton(label="걷기", variable=self.walk_enabled, command=lambda: self.save_config(walk=self.walk_enabled.get()))
         self.notify_enabled = tk.BooleanVar(self.root, (config or {}).get("notify", True))
         self.menu.add_checkbutton(label="작업 알림", variable=self.notify_enabled, command=lambda: self.save_config(notify=self.notify_enabled.get()))
+        self.inbox_enabled = tk.BooleanVar(self.root, (config or {}).get("inbox_notify", True))
+        self.menu.add_checkbutton(label="스케줄 알림", variable=self.inbox_enabled, command=lambda: self.save_config(inbox_notify=self.inbox_enabled.get()))
         self.usage_enabled = tk.BooleanVar(self.root, (config or {}).get("usage_notify", True))
         self.menu.add_checkbutton(label="사용량 알림", variable=self.usage_enabled, command=lambda: self.save_config(usage_notify=self.usage_enabled.get()))
         self.history_menu = tk.Menu(self.menu, tearoff=0, postcommand=self.fill_history)
@@ -618,7 +624,36 @@ class Mascot:
             self.history = [(label, body, link)] + self.history[:HISTORY_SIZE - 1]
             if self.notify_enabled.get() and not self.closing and self.root.state() != "withdrawn":
                 self.speak(body=body, link=link, pose="waiting" if waiting else "sick" if kind == "failed" else None)
+        self.poll_inbox()
         self.root.after(NOTIFY_POLL_MS, self.poll_notify)
+
+    def poll_inbox(self):
+        # 알림함을 이름 순서로 읽고 지운다. 말풍선이 떠 있으면 닫힐 때까지 다음 것은 남겨 둔다(켜기 전에 쌓인 것도 말한다).
+        # 꺼져 있거나 숨겨져 있으면 말하지 않고 「최근 알림」에만 남긴다. 깨진 파일은 말없이 지운다
+        try:
+            names = sorted(n for n in os.listdir(INBOX_DIR) if n.endswith(".json"))
+        except OSError:
+            return
+        for name in names:
+            speaking = self.inbox_enabled.get() and not self.closing and self.root.state() != "withdrawn"
+            if speaking and self.bubble is not None:
+                return
+            path = os.path.join(INBOX_DIR, name)
+            note = load_json(path)
+            try:
+                os.remove(path)
+            except OSError:
+                continue
+            if not isinstance(note, dict) or not (note.get("title") or note.get("text")):
+                continue
+            title, text = str(note.get("title") or ""), str(note.get("text") or "")
+            body = "\n".join(filter(None, (title, text)))
+            link = note.get("link") if isinstance(note.get("link"), str) else None
+            pose = {"warn": "waiting", "error": "sick"}.get(note.get("kind"))
+            label = f"{local_now():%H:%M} " + " — ".join(filter(None, (title, text.splitlines()[0] if text else "")))
+            self.history = [(label, body, link)] + self.history[:HISTORY_SIZE - 1]
+            if speaking:
+                self.speak(body=body, link=link, pose=pose)
 
     def poll_sessions(self):
         # 세션 상태를 다시 읽어, 작업 중인 세션이 생기면 작업 중 그림을 돌리기 시작하고 다 끝나면 멈춘다
