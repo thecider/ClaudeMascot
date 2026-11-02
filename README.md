@@ -1,6 +1,6 @@
 # Claude Mascot
 
-<p align="center"><img src="mascot/images/idle_1.png" width="200" alt="Claude Mascot"></p>
+<p align="center"><img src="docs/eat.gif" width="200" alt="Claude Mascot"></p>
 
 [한국어](#한국어) · [English](#english)
 
