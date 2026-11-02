@@ -1,5 +1,7 @@
 # Claude Mascot
 
+<p align="center"><img src="mascot/images/idle_1.png" width="200" alt="Claude Mascot"></p>
+
 [한국어](#한국어) · [English](#english)
 
 Windows 바탕화면에 사는 작은 캐릭터가 Claude 서비스 상태와 내 사용량을 알려 줍니다.
