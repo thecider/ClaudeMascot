@@ -1,9 +1,11 @@
 # Claude Mascot: 바탕화면에 SD 캐릭터를 띄워 Claude 상태와 사용량에 반응한다 (Windows 전용).
 # 데이터: ~/.claude/claude-status/usage-<계정>.json (Claude Code 플러그인 usage-status-bridge 가 쓴다, 없으면 상태만), status.claude.com 공개 API.
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
-# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/걷기/작업 알림/스케줄 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
+# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/게임하기/걷기/작업 알림/스케줄 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
 # 식사 주기: 오른쪽 클릭 「식사 주기 > 햄버거」를 누르면 햄버거를 먹는다(eat_1~6, 약 7초). 누르거나 말하면 멈춘다.
+# 게임하기: 오른쪽 클릭 「게임하기」 = 별도 창에서 플래피 버드식 미니 게임(클릭·스페이스 = 날아오르기, Esc = 그만). 최고 점수는 mascot.json 의 game_best.
+#   게임 중에는 본체를 숨기고, 알림(장애 포함)은 말풍선 없이 「최근 알림」에만 남긴다.
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
@@ -34,7 +36,7 @@ import webbrowser
 import winreg
 
 import pystray
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image, ImageChops, ImageOps, ImageTk
 
 # exe(PyInstaller)로 묶이면 그림은 실행 때 풀리는 임시 폴더(sys._MEIPASS)에 있다
 IMAGE_DIR = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "images")
@@ -101,6 +103,21 @@ SICK_PET_LINES = ("아프지만… 기분 좋아요", "헤헤… 조금 나아�
 ICE_CHANCE = 1 / 3
 ICE_FRAMES = (("sick_ice_1", 600), ("sick_ice_2", 700), ("sick_ice_3", 700), ("sick_ice_4", 1500))
 ICE_LINE = "시원해요… 고마워요!"
+# 게임하기: 별도 창에서 클릭(스페이스)하면 날아오르고 안 누르면 떨어진다. 기둥 틈을 지나면 1점. 값은 한 칸(GAME_TICK_MS)당 px
+GAME_SIZE = (360, 540)
+GAME_TICK_MS = 16
+GAME_GRAVITY = 0.45
+GAME_FLAP = -7.2  # 클릭 때 위로 속도
+GAME_SPEED = 2.6  # 기둥이 다가오는 속도 (끝까지 같다)
+GAME_GAP = 170  # 위아래 기둥 사이 틈
+GAME_PIPE_W = 58
+GAME_PIPE_EVERY = 200  # 기둥 간격
+GAME_FIRST_PIPE = 140  # 첫 기둥은 화면 밖 이만큼 더 멀리서: 시작하자마자 기둥이 오면 손이 안 풀린다
+GAME_GROUND = 40
+GAME_BIRD_X = 90  # 캐릭터 가운데 x
+GAME_BIRD_H = 64
+GAME_HITBOX = 0.7  # 충돌은 그림보다 작게 본다: 그림 가장자리 스침으로 죽으면 억울하다
+GAME_RESTART_S = 0.5  # 게임 오버 직후 이 동안 클릭은 무시한다(연타하다 바로 다시 시작되지 않게)
 DEFAULT_CHARACTER = "기본"  # 트레이 메뉴의 기본 캐릭터 이름. 설정에는 "" 로 저장한다
 # 시간대 인사: (시작 시, 끝 시, 문구). 14~18시는 인사 없음
 GREETINGS = ((5, 11, "좋은 아침이에요!"), (11, 14, "점심 맛있게 드세요"), (18, 24, "오늘도 수고했어요"))
@@ -357,6 +374,142 @@ def usage_speech(status, accounts, now):
     return "Claude 상태를 확인하지 못했어요" if status is None else "Claude 정상이에요"
 
 
+class Game:
+    # 게임하기 창. y = 캐릭터 가운데 높이, pipes = [기둥 왼쪽 x, 틈 위쪽 y, 점수 셌나]. 첫 클릭 전에는 멈춰 있다
+    def __init__(self, mascot):
+        self.mascot = mascot
+        width, height = GAME_SIZE
+        self.win = tk.Toplevel(mascot.root)
+        self.win.title("게임하기")
+        self.win.resizable(False, False)
+        self.win.attributes("-topmost", True)
+        # 마스코트 왼쪽에(자리가 없으면 오른쪽에) 띄우고 작업 영역 안으로 당긴다
+        left, top, right, bottom = mascot.work_area()
+        x = mascot.x - width - 16 if mascot.x - width - 16 >= left else mascot.x + mascot.images["idle_1"].width + 16
+        x = max(left, min(x, right - width))
+        y = max(top, min(mascot.y + HEIGHT - height, bottom - height - 40))
+        self.win.geometry(f"{width}x{height}+{x}+{y}")
+        self.canvas = tk.Canvas(self.win, width=width, height=height, highlightthickness=0, bg="#cdebf7")
+        self.canvas.pack()
+        self.sprites = {name: self.sprite(name) for name in ("idle_1", "drag", "sick")}
+        # 그림 요소는 한 번만 만들고 매 칸 위치·내용만 바꾼다: 매번 지우고 새로 만들면 끊긴다.
+        # 기둥은 화면에 동시에 나올 수 있는 수만큼 미리 만들고, 안 쓰는 것은 화면 밖에 둔다
+        c = self.canvas
+        self.pipe_items = [tuple(c.create_rectangle(-99, 0, -99, 0, fill="#f28c38", outline="#c0651f", width=2) for _ in range(2))
+                           for _ in range((width + GAME_FIRST_PIPE + GAME_PIPE_W) // GAME_PIPE_EVERY + 2)]
+        c.create_rectangle(-2, height - GAME_GROUND, width + 2, height + 2, fill="#e8c99b", outline="#c9a46e", width=2)
+        self.bird_item = c.create_image(GAME_BIRD_X, 0)
+        self.score_item = c.create_text(width / 2, 48, font=("Segoe UI", 28, "bold"), fill="#5a3a1a")
+        self.message_item = c.create_text(width / 2, 0, font=("Segoe UI", 13, "bold"), fill="#5a3a1a", justify="center")
+        self.win.bind("<ButtonPress-1>", lambda e: self.flap())
+        self.win.bind("<space>", lambda e: self.flap())
+        self.win.bind("<Escape>", lambda e: self.close())
+        self.win.protocol("WM_DELETE_WINDOW", self.close)
+        self.win.focus_force()
+        self.closed = False
+        self.reset()
+        self.loop()
+
+    def sprite(self, name):
+        # 그림의 빈 여백을 잘라 GAME_BIRD_H 높이로
+        image = open_image(name, self.mascot.character)
+        image = image.crop(image.getchannel("A").point(lambda a: 255 if a > 128 else 0).getbbox())
+        image = image.resize((round(image.width * GAME_BIRD_H / image.height), GAME_BIRD_H), Image.LANCZOS)
+        return ImageTk.PhotoImage(image)
+
+    def reset(self):
+        self.y = GAME_SIZE[1] * 0.4
+        self.vy = 0
+        self.pipes = []
+        self.score = 0
+        self.started = self.over = self.new_record = False
+        self.over_at = 0
+
+    def flap(self):
+        if self.over:
+            if time.monotonic() - self.over_at >= GAME_RESTART_S:
+                self.reset()
+            return
+        self.started = True
+        self.vy = GAME_FLAP
+
+    def bird_box(self):
+        sprite = self.sprites[self.sprite_name()]
+        half_w, half_h = sprite.width() * GAME_HITBOX / 2, sprite.height() * GAME_HITBOX / 2
+        return GAME_BIRD_X - half_w, self.y - half_h, GAME_BIRD_X + half_w, self.y + half_h
+
+    def sprite_name(self):
+        return "sick" if self.over else "drag" if self.vy < 0 else "idle_1"
+
+    def step(self):
+        if not self.started or self.over:
+            return
+        width, height = GAME_SIZE
+        self.vy += GAME_GRAVITY
+        self.y += self.vy
+        for pipe in self.pipes:
+            pipe[0] -= GAME_SPEED
+        self.pipes = [pipe for pipe in self.pipes if pipe[0] + GAME_PIPE_W > 0]
+        if not self.pipes or self.pipes[-1][0] < width - GAME_PIPE_EVERY:
+            self.pipes.append([width + (0 if self.pipes or self.score else GAME_FIRST_PIPE), random.uniform(60, height - GAME_GROUND - 60 - GAME_GAP), False])
+        x1, y1, x2, y2 = self.bird_box()
+        for pipe in self.pipes:
+            if not pipe[2] and pipe[0] + GAME_PIPE_W < x1:
+                pipe[2] = True
+                self.score += 1
+        hit = y1 < 0 or y2 > height - GAME_GROUND or any(
+            pipe[0] < x2 and pipe[0] + GAME_PIPE_W > x1 and (y1 < pipe[1] or y2 > pipe[1] + GAME_GAP) for pipe in self.pipes)
+        if hit:
+            self.game_over()
+
+    def game_over(self):
+        self.over = True
+        self.over_at = time.monotonic()
+        self.best = (read_config() or {}).get("game_best", 0)
+        self.new_record = self.score > self.best
+        if self.new_record:
+            self.best = self.score
+            self.mascot.save_config(game_best=self.score)
+
+    def draw(self):
+        width, height = GAME_SIZE
+        c = self.canvas
+        for k, (top, bottom) in enumerate(self.pipe_items):
+            if k < len(self.pipes):
+                x, gap, _ = self.pipes[k]
+                c.coords(top, x, -2, x + GAME_PIPE_W, gap)
+                c.coords(bottom, x, gap + GAME_GAP, x + GAME_PIPE_W, height - GAME_GROUND)
+            else:
+                c.coords(top, -99, 0, -99, 0)
+                c.coords(bottom, -99, 0, -99, 0)
+        c.coords(self.bird_item, GAME_BIRD_X, self.y)
+        c.itemconfigure(self.bird_item, image=self.sprites[self.sprite_name()])
+        c.itemconfigure(self.score_item, text=str(self.score))
+        if not self.started:
+            message, at = "클릭(스페이스)하면 시작!\nEsc 로 그만하기", 0.62
+        elif self.over:
+            message, at = "\n".join(["앗! 부딪혔어요", f"점수 {self.score} · 최고 {self.best}"] + (["최고 기록!"] if self.new_record else []) + ["클릭하면 다시"]), 0.45
+        else:
+            message, at = "", 0.5
+        c.coords(self.message_item, width / 2, height * at)
+        c.itemconfigure(self.message_item, text=message)
+
+    def loop(self):
+        if self.closed:
+            return
+        self.step()
+        self.draw()
+        self.win.after(GAME_TICK_MS, self.loop)
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+        self.win.destroy()
+        self.mascot.game = None
+        self.mascot.show_window()
+
+
 class Mascot:
     def __init__(self):
         config = read_config()
@@ -391,6 +544,7 @@ class Mascot:
         self.history = []  # 최근 작업 알림, 새것이 앞: (메뉴 한 줄 "HH:MM 프로젝트 · 완료 — 한 줄", 말풍선 내용, 세션 링크 또는 None)
         self.pose = None  # 말하는 동안 talk 대신 보여 줄 그림(입력 대기 = waiting)
         self.usage_levels = {}  # (계정, 창) → (넘은 USAGE_LEVELS 단계(아직이면 0), 초기화 시각 문자열)
+        self.game = None  # 게임하기 창이 열려 있으면 Game. 그동안 본체는 숨겨 두고 알림은 「최근 알림」에만 남긴다
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -412,6 +566,7 @@ class Mascot:
         self.feed_menu = tk.Menu(self.menu, tearoff=0)
         self.feed_menu.add_command(label="햄버거", command=self.feed)
         self.menu.add_cascade(label="식사 주기", menu=self.feed_menu)
+        self.menu.add_command(label="게임하기", command=self.play_game)
         self.walk_enabled = tk.BooleanVar(self.root, (config or {}).get("walk", True))
         self.menu.add_checkbutton(label="걷기", variable=self.walk_enabled, command=lambda: self.save_config(walk=self.walk_enabled.get()))
         self.notify_enabled = tk.BooleanVar(self.root, (config or {}).get("notify", True))
@@ -703,15 +858,22 @@ class Mascot:
         incidents = {incident["id"] for incident in status.get("incidents", [])}
         state = "ok" if indicator == "none" else "maintenance" if indicator == "maintenance" else "down"
         if state == "down" and self.state != "down":
-            self.speak("Claude 장애가 났어요")
+            headline = "Claude 장애가 났어요"
         elif state == "down" and incidents - self.seen_incidents:
-            self.speak("새 사고가 생겼어요")
+            headline = "새 사고가 생겼어요"
         elif state == "maintenance" and self.state != "maintenance":
-            self.speak("Claude 점검 중이에요")
+            headline = "Claude 점검 중이에요"
         elif state == "ok" and self.state == "down":
-            self.speak("Claude 복구됐어요!")
+            headline = "Claude 복구됐어요!"
         elif state == "ok" and self.state == "maintenance":
-            self.speak("점검이 끝났어요")
+            headline = "점검이 끝났어요"
+        else:
+            headline = None
+        # 숨겨 둬도 장애는 말하지만, 게임 중에는 「최근 알림」에만 남긴다
+        if headline and self.game is not None:
+            self.history = [(f"{local_now():%H:%M} {headline}", headline, None)] + self.history[:HISTORY_SIZE - 1]
+        elif headline:
+            self.speak(headline)
         self.state = state
         self.seen_incidents = incidents
 
@@ -752,7 +914,20 @@ class Mascot:
             self.stop_talking(self.bubble)
         self.root.withdraw()
 
+    def play_game(self):
+        # 이미 열려 있으면 그 창을 앞으로. 게임 중에는 본체를 숨긴다(게임 창 안에 있다)
+        if self.game is not None:
+            self.game.win.lift()
+            self.game.win.focus_force()
+            return
+        self.stop_eat()
+        self.hide_window()
+        self.game = Game(self)
+
     def show_window(self):
+        if self.game is not None:  # 트레이 「보이기」: 게임 중이면 게임 창을 앞으로
+            self.play_game()
+            return
         self.root.deiconify()
         # 다시 보일 때 그림을 새로 넣는다: 숨김 동안 바뀐 상태도 반영된다
         self.shown = None

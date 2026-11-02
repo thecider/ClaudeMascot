@@ -23,6 +23,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 - **쓰다듬기**: 버튼을 누르지 않은 채 머리 위에서 좌우로 문지르면 좋아합니다. 아플 때 쓰다듬으면 가끔 얼음주머니를 갈아 줍니다.
 - **걷기**: 가만히 두면 가끔 좌우로 몇 걸음 걷습니다. 클릭하면 멈추고, 오른쪽 클릭 → **걷기** 체크를 풀면 걷지 않습니다.
 - **식사 주기**: 오른쪽 클릭 → **식사 주기** → **햄버거**를 누르면 햄버거를 냠냠 먹습니다. 클릭하면 멈춥니다.
+- **게임하기**: 오른쪽 클릭 → **게임하기**를 누르면 작은 게임 창이 뜹니다. 클릭(또는 스페이스)하면 캐릭터가 날아오르고, 기둥 틈을 지날 때마다 1점입니다. Esc나 창 닫기로 그만합니다. 최고 점수를 기억하고, 게임하는 동안 온 알림은 말풍선 없이 「최근 알림」에 쌓입니다.
 - **잠들기·인사·생일**: 10분 동안 안 건드리면 잠들고, 아침·점심·저녁에 인사하고, 생일을 축하해 줍니다.
 - **트레이 메뉴**: 보이기 / 숨기기 / 캐릭터 / Windows 시작 시 실행 / 완전히 종료
 
@@ -118,6 +119,7 @@ build.bat
 - **Pet**: rub left and right over its head without pressing a button. Pet it while it's sick and it sometimes gets a fresh ice bag.
 - **Walk**: when left alone it sometimes takes a few steps left or right. Click to stop it; uncheck right-click → **걷기** (Walk) to turn walking off.
 - **Feed**: right-click → **식사 주기** (Feed) → **햄버거** (Hamburger) and it munches a hamburger. Click to stop it.
+- **Mini game**: right-click → **게임하기** (Play a game) opens a small game window. Click (or press Space) to fly up; each gap you pass is a point. Press Esc or close the window to stop. Your best score is kept, and notifications that arrive while you play go to recent notifications without a bubble.
 - **Sleep, greetings, birthdays**: falls asleep after 10 idle minutes, greets you in the morning / at lunch / in the evening, and celebrates birthdays.
 - **Tray menu**: Show / Hide / Character / Run at Windows startup / Quit. (The UI text is Korean.)
 
