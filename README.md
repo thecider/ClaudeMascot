@@ -24,6 +24,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 - **걷기**: 가만히 두면 가끔 좌우로 몇 걸음 걷습니다. 클릭하면 멈추고, 오른쪽 클릭 → **걷기** 체크를 풀면 걷지 않습니다.
 - **식사 주기**: 오른쪽 클릭 → **식사 주기** → **햄버거**를 누르면 햄버거를 냠냠 먹습니다. 클릭하면 멈춥니다.
 - **게임하기**: 오른쪽 클릭 → **게임하기**를 누르면 작은 게임 창이 뜹니다. 클릭(또는 스페이스)하면 캐릭터가 날아오르고, 기둥 틈을 지날 때마다 1점입니다. Esc나 창 닫기로 그만합니다. 최고 점수를 기억하고, 게임하는 동안 온 알림은 말풍선 없이 「최근 알림」에 쌓입니다.
+- **날씨**: 오른쪽 클릭 → **날씨** → **위치 정하기…** 에서 도시를 찾아 후보 중 하나를 고르면, 매일 아침(5시 이후) 처음 인사할 때 오늘 날씨를 같이 말해 줍니다. 비나 눈 올 확률이 높으면 우산도 챙겨 줍니다. **날씨** → **오늘 날씨** 로 언제든 다시 물어볼 수 있습니다. 「서울」처럼 짧은 이름은 잘 안 찾아지니 「서울특별시」「성남시」처럼 쓰거나 영어(Seoul)로 찾으세요. 위치를 정하지 않으면 날씨를 말하지 않습니다. 날씨 정보: [Open-Meteo](https://open-meteo.com/)
 - **잠들기·인사·생일**: 10분 동안 안 건드리면 잠들고, 아침·점심·저녁에 인사하고, 생일을 축하해 줍니다.
 - **업데이트**: 새 버전이 나오면 「새 버전이 나왔어요」라고 알려 주고, 말풍선을 누르면 받는 곳이 열립니다. 트레이 → **자동 업데이트** 를 켜 두면 알아서 받아 바꾸고 다시 켜집니다(받은 파일은 릴리스의 SHA-256 과 맞춰 봅니다). v1.8.0 부터 들어 있어서, 그 전 버전은 한 번만 직접 받아 주세요.
 - **트레이 메뉴**: 보이기 / 숨기기 / 캐릭터 / Windows 시작 시 실행 / 자동 업데이트 / 지금 업데이트 확인 / 완전히 종료
@@ -121,6 +122,7 @@ build.bat
 - **Walk**: when left alone it sometimes takes a few steps left or right. Click to stop it; uncheck right-click → **걷기** (Walk) to turn walking off.
 - **Feed**: right-click → **식사 주기** (Feed) → **햄버거** (Hamburger) and it munches a hamburger. Click to stop it.
 - **Mini game**: right-click → **게임하기** (Play a game) opens a small game window. Click (or press Space) to fly up; each gap you pass is a point. Press Esc or close the window to stop. Your best score is kept, and notifications that arrive while you play go to recent notifications without a bubble.
+- **Weather**: right-click → **날씨** (Weather) → **위치 정하기…** (Set location), search for your city and pick it from the list. Every morning (after 5 AM) the first greeting comes with today's weather, plus an umbrella reminder when rain or snow is likely. **날씨** → **오늘 날씨** (Today's weather) asks again any time. Nothing is said until you set a location. Weather data: [Open-Meteo](https://open-meteo.com/)
 - **Sleep, greetings, birthdays**: falls asleep after 10 idle minutes, greets you in the morning / at lunch / in the evening, and celebrates birthdays.
 - **Updates**: when a new version is out it tells you, and clicking the bubble opens the download page. Turn on tray → **자동 업데이트** (Auto update) and it downloads, swaps and restarts by itself (the download is checked against the release's SHA-256). This ships in v1.8.0, so older versions need one manual download.
 - **Tray menu**: Show / Hide / Character / Run at Windows startup / Auto update / Check for updates now / Quit. (The UI text is Korean.)

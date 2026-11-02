@@ -1,7 +1,9 @@
 # Claude Mascot: 바탕화면에 SD 캐릭터를 띄워 Claude 상태와 사용량에 반응한다 (Windows 전용).
 # 데이터: ~/.claude/claude-status/usage-<계정>.json (Claude Code 플러그인 usage-status-bridge 가 쓴다, 없으면 상태만), status.claude.com 공개 API.
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
-# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/게임하기/걷기/작업 알림/스케줄 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
+# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/게임하기/날씨/걷기/작업 알림/스케줄 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
+# 날씨: 오른쪽 클릭 「날씨 > 위치 정하기」로 도시를 찾아 후보 중 고르면(기본은 안 정함 = 날씨 안 말함) 하루 한 번 5시 이후 처음 켜질 때·처음 한가할 때 인사와 함께 오늘 날씨,
+#   비·눈 확률이 높으면 우산 한마디. 「날씨 > 오늘 날씨」로 언제든 다시 묻는다. 날씨는 Open-Meteo(키 없음).
 # 걷기: 「걷기」가 체크돼 있으면(기본) 한가할 때 가끔 지금 높이에서 좌우로 몇 걸음 걷는다(walk_1~4, 왼쪽은 좌우 반전). 누르면 멈춘다.
 # 식사 주기: 오른쪽 클릭 「식사 주기 > 햄버거」를 누르면 햄버거를 먹는다(eat_1~6, 약 7초). 누르거나 말하면 멈춘다.
 # 게임하기: 오른쪽 클릭 「게임하기」 = 별도 창에서 플래피 버드식 미니 게임(클릭·스페이스 = 날아오르기, Esc = 그만). 최고 점수는 mascot.json 의 game_best.
@@ -35,6 +37,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import urllib.parse
 import urllib.request
 import webbrowser
 import winreg
@@ -69,6 +72,20 @@ UPDATE_ASSET = "ClaudeMascot.exe"
 UPDATE_FIRST_MS = 60_000  # 켜고 이만큼 뒤 첫 확인
 UPDATE_EVERY_MS = 6 * 3_600_000
 UPDATE_RETRY_MS = 60_000  # 받아 뒀는데 바쁘면(게임·말풍선·끌기·메뉴) 이만큼 뒤 다시
+# 날씨: Open-Meteo(키·가입 없음). 위치는 「날씨 > 위치 정하기」에서 이름으로 찾아 후보 중 고른 좌표만 mascot.json 의 weather_place 에 둔다
+# (이름 첫 결과를 그냥 쓰면 「성남」이 북한 성남으로 잡힌다)
+GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
+WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
+WEATHER_FROM_HOUR = 5  # 이 시각부터 그날 처음 한가할 때 한 번 오늘 날씨를 말한다
+WEATHER_RETRY_S = 600  # 가져오지 못했으면 이만큼 뒤 다시
+RAIN_PERCENT = 50  # 비·눈 확률이 이 이상이면 우산 한마디
+# WMO 날씨 코드 → 말
+WEATHER_NAMES = {0: "맑음", 1: "대체로 맑음", 2: "구름 조금", 3: "흐림", 45: "안개", 48: "안개",
+                 51: "이슬비", 53: "이슬비", 55: "이슬비", 56: "어는 이슬비", 57: "어는 이슬비",
+                 61: "약한 비", 63: "비", 65: "강한 비", 66: "어는 비", 67: "어는 비",
+                 71: "약한 눈", 73: "눈", 75: "많은 눈", 77: "싸락눈", 80: "소나기", 81: "소나기", 82: "강한 소나기",
+                 85: "눈", 86: "많은 눈", 95: "뇌우", 96: "우박 뇌우", 99: "우박 뇌우"}
+SNOW_CODES = {71, 73, 75, 77, 85, 86}
 
 HEIGHT = 160
 IDLE_MS = 30_000
@@ -320,6 +337,51 @@ def launch_updated(exe, tag):
     # 새 exe 를 따로 띄운다. 단일 exe(PyInstaller)는 환경 변수로 부모의 압축 푼 폴더를 물려받으므로 끊고 시작한다
     env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
     subprocess.Popen([exe, "--updated", tag], env=env, close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
+
+
+def get_json(url, params):
+    # 조회 실패면 None
+    try:
+        with urllib.request.urlopen(url + "?" + urllib.parse.urlencode(params), timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def search_places(name):
+    # 이름으로 찾은 후보 [{label, lat, lon}]. 조회 실패면 None
+    data = get_json(GEOCODE_URL, {"name": name, "count": 10, "language": "ko", "format": "json"})
+    if not isinstance(data, dict):
+        return None
+    places = []
+    for r in data.get("results") or []:
+        if isinstance(r, dict) and isinstance(r.get("latitude"), (int, float)) and isinstance(r.get("longitude"), (int, float)):
+            # 같은 이름이 많아서 도·시군·나라까지 붙여 보여 준다 (이름과 같은 칸은 뺀다)
+            parts = [r.get("name")] + [r.get(k) for k in ("admin2", "admin1", "country") if r.get(k) and r.get(k) != r.get("name")]
+            places.append({"label": ", ".join(str(p) for p in parts if p), "lat": r["latitude"], "lon": r["longitude"]})
+    return places
+
+
+def fetch_weather(place):
+    # 오늘 날씨 {code, high, low, rain, now}. 조회 실패면 None
+    data = get_json(WEATHER_URL, {"latitude": place["lat"], "longitude": place["lon"], "timezone": "auto", "forecast_days": 1,
+                                  "current": "temperature_2m",
+                                  "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"})
+    try:
+        daily = data["daily"]
+        return {"code": daily["weather_code"][0], "high": daily["temperature_2m_max"][0], "low": daily["temperature_2m_min"][0],
+                "rain": daily["precipitation_probability_max"][0], "now": data["current"]["temperature_2m"]}
+    except (TypeError, KeyError, IndexError):
+        return None
+
+
+def weather_speech(place, weather):
+    # 「성남시 오늘 맑음, 6~13°C (지금 12°C)」 + 비·눈 확률이 높으면 우산 한마디
+    lines = [f"{place['label'].split(',')[0]} 오늘 {WEATHER_NAMES.get(weather['code'], '날씨 알 수 없음')}, "
+             f"{round(weather['low'])}~{round(weather['high'])}°C (지금 {round(weather['now'])}°C)"]
+    if isinstance(weather["rain"], (int, float)) and weather["rain"] >= RAIN_PERCENT:
+        lines.append(f"{'눈' if weather['code'] in SNOW_CODES else '비'} 올 확률 {weather['rain']}% — 우산 챙기세요!")
+    return "\n".join(lines)
 
 
 def autostart_enabled():
@@ -606,6 +668,77 @@ class Game:
         self.mascot.show_window()
 
 
+class PlacePicker:
+    # 날씨 위치 정하기 창: 이름으로 찾고 → 후보 중 하나를 고른다. 찾기는 스레드에서(창이 멈추지 않게)
+    def __init__(self, mascot):
+        self.mascot = mascot
+        self.places = []
+        self.win = tk.Toplevel(mascot.root)
+        self.win.title("날씨 위치 정하기")
+        self.win.attributes("-topmost", True)
+        self.win.resizable(False, False)
+        self.win.configure(padx=12, pady=10)
+        tk.Label(self.win, text="도시 이름 (예: 서울특별시, 성남시, Seoul)", font=("Segoe UI", 9)).pack(anchor="w")
+        row = tk.Frame(self.win)
+        row.pack(fill="x", pady=(4, 6))
+        self.entry = tk.Entry(row, font=("Segoe UI", 10), width=30)
+        self.entry.pack(side="left", fill="x", expand=True)
+        self.find_button = tk.Button(row, text="찾기", command=self.search, width=6)
+        self.find_button.pack(side="left", padx=(6, 0))
+        self.listbox = tk.Listbox(self.win, font=("Segoe UI", 9), width=48, height=10, activestyle="none")
+        self.listbox.pack(fill="both")
+        self.message = tk.Label(self.win, text="", fg="#666", font=("Segoe UI", 9), justify="left", wraplength=340)
+        self.message.pack(anchor="w", pady=(4, 4))
+        tk.Button(self.win, text="이 위치로 정하기", command=self.pick).pack(anchor="e")
+        self.entry.bind("<Return>", lambda e: self.search())
+        self.listbox.bind("<Double-Button-1>", lambda e: self.pick())
+        self.win.bind("<Escape>", lambda e: self.close())
+        self.win.protocol("WM_DELETE_WINDOW", self.close)
+        self.win.update_idletasks()
+        left, top, right, bottom = mascot.work_area()
+        width, height = self.win.winfo_reqwidth(), self.win.winfo_reqheight()
+        self.win.geometry(f"+{(left + right - width) // 2}+{(top + bottom - height) // 2}")
+        self.win.focus_force()
+        self.entry.focus_set()
+
+    def search(self):
+        name = self.entry.get().strip()
+        if not name:
+            return
+        self.find_button.configure(state="disabled")
+        self.message.configure(text="찾는 중…")
+        threading.Thread(target=lambda: self.mascot.root.after(0, self.found, search_places(name)), daemon=True).start()
+
+    def found(self, places):
+        if not self.win.winfo_exists():
+            return
+        self.find_button.configure(state="normal")
+        self.places = places or []
+        self.listbox.delete(0, "end")
+        for place in self.places:
+            self.listbox.insert("end", place["label"])
+        if places is None:
+            self.message.configure(text="찾지 못했어요. 인터넷 연결을 확인해 주세요")
+        elif not places:
+            # 짧은 한글 이름(서울·부산)은 안 나오거나 작은 마을이 나온다
+            self.message.configure(text="결과가 없어요. 「서울특별시」「성남시」처럼 시·도까지 붙이거나 영어(Seoul)로 찾아보세요")
+        else:
+            self.listbox.selection_set(0)
+            self.message.configure(text="맞는 곳을 골라 주세요. 원하는 곳이 없으면 「성남시」처럼 시·도까지 붙이거나 영어로 찾아보세요")
+
+    def pick(self):
+        chosen = self.listbox.curselection()
+        if not chosen:
+            return
+        place = self.places[chosen[0]]
+        self.close()
+        self.mascot.set_weather_place(place)
+
+    def close(self):
+        self.win.destroy()
+        self.mascot.picker = None
+
+
 class Mascot:
     def __init__(self):
         config = read_config()
@@ -646,6 +779,11 @@ class Mascot:
         self.updating = False  # 새 exe 를 받는 중이거나 받아 두고 교체를 기다리는 중
         # 업데이트로 다시 켜졌으면 새 버전 태그 (launch_updated 가 「--updated <태그>」로 띄운다)
         self.updated_to = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--updated" else None
+        place = (config or {}).get("weather_place")
+        self.weather_place = place if isinstance(place, dict) and {"label", "lat", "lon"} <= place.keys() else None  # 안 정했으면 날씨를 말하지 않는다
+        self.weather_busy = False  # 날씨를 가져오는 중
+        self.weather_retry = 0.0  # 아침 날씨를 못 가져왔으면 이 시각(monotonic)까지 다시 안 한다
+        self.picker = None  # 열려 있는 위치 정하기 창
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -668,6 +806,10 @@ class Mascot:
         self.feed_menu.add_command(label="햄버거", command=self.feed)
         self.menu.add_cascade(label="식사 주기", menu=self.feed_menu)
         self.menu.add_command(label="게임하기", command=self.play_game)
+        self.weather_menu = tk.Menu(self.menu, tearoff=0)
+        self.weather_menu.add_command(label="오늘 날씨", command=self.tell_weather)
+        self.weather_menu.add_command(label="위치 정하기…", command=self.open_picker)
+        self.menu.add_cascade(label="날씨", menu=self.weather_menu)
         self.walk_enabled = tk.BooleanVar(self.root, (config or {}).get("walk", True))
         self.menu.add_checkbutton(label="걷기", variable=self.walk_enabled, command=lambda: self.save_config(walk=self.walk_enabled.get()))
         self.notify_enabled = tk.BooleanVar(self.root, (config or {}).get("notify", True))
@@ -805,8 +947,63 @@ class Mascot:
         if self.greet_birthday():
             return
         greeting = self.take_greeting()
+        if self.daily_weather(greeting):  # 오늘 처음이면 인사에 날씨를 붙여 말한다(가져온 뒤)
+            return
         if greeting:
             self.speak(greeting)
+
+    # 날씨
+    def daily_weather(self, greeting=None):
+        # 위치를 정했고 WEATHER_FROM_HOUR 이후 오늘 아직 안 말했으면 가져와서 말한다. 숨김·게임·종료 중이면 보일 때까지 미룬다. 시작했으면 True
+        now = local_now()
+        if (self.weather_place is None or self.weather_busy or now.hour < WEATHER_FROM_HOUR or time.monotonic() < self.weather_retry
+                or (read_config() or {}).get("weather_day") == f"{now:%Y-%m-%d}"
+                or self.game is not None or self.closing or self.root.state() == "withdrawn"):
+            return False
+        self.request_weather(False, greeting)
+        return True
+
+    def tell_weather(self):
+        if self.weather_place is None:
+            self.open_picker()
+        elif not self.weather_busy:
+            self.request_weather(True)
+
+    def request_weather(self, manual, greeting=None):
+        self.weather_busy = True
+        place = self.weather_place
+        threading.Thread(target=lambda: self.root.after(0, self.got_weather, place, fetch_weather(place), manual, greeting), daemon=True).start()
+
+    def got_weather(self, place, weather, manual, greeting):
+        # 메뉴로 물었으면 늘 말한다. 아침 날씨는 말풍선이 떠 있거나 숨겨졌으면 「최근 알림」에만 남긴다(오늘 몫은 끝)
+        self.weather_busy = False
+        if weather is None:
+            if manual:
+                self.speak(body="날씨를 가져오지 못했어요")
+                return
+            self.weather_retry = time.monotonic() + WEATHER_RETRY_S
+            if greeting:
+                self.speak(greeting)
+            return
+        text = weather_speech(place, weather)
+        if not manual:
+            self.save_config(weather_day=f"{local_now():%Y-%m-%d}")
+        self.history = [(f"{local_now():%H:%M} 날씨 — {text.splitlines()[0]}", text, None)] + self.history[:HISTORY_SIZE - 1]
+        if manual or (self.bubble is None and self.game is None and not self.closing and self.root.state() != "withdrawn"):
+            self.speak(headline=greeting, body=text)
+
+    def open_picker(self):
+        if self.picker is not None:
+            self.picker.win.lift()
+            self.picker.win.focus_force()
+            return
+        self.picker = PlacePicker(self)
+
+    def set_weather_place(self, place):
+        # 위치를 정하면 바로 그곳 날씨를 말한다
+        self.weather_place = place
+        self.save_config(weather_place=place)
+        self.request_weather(True)
 
     def speak_clicked(self):
         self.last_touch = time.monotonic()
@@ -830,6 +1027,8 @@ class Mascot:
             self.tray.update_menu()
         self.greet_birthday()
         self.check_usage()
+        if self.bubble is None:  # 켜 둔 채 날이 바뀌었거나 숨겨 뒀다 다시 보이면 그때 아침 날씨
+            self.daily_weather()
         self.root.after(MOOD_POLL_MS, self.poll_mood)
 
     def check_usage(self):
