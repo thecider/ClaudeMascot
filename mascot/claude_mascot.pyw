@@ -1398,6 +1398,18 @@ class Mascot:
                  cursor="hand2" if link else "").pack()
         bubble.bind("<ButtonRelease-1>", lambda e: (link and os.startfile(link), self.stop_talking(bubble)))
         bubble.update_idletasks()
+        self.place_bubble()
+        self.talking = True
+        self.show()
+        # 타이머는 root 에 건다: 말풍선에 걸면 클릭으로 먼저 닫을 때 destroy 가 콜백까지 지워 talk 에 멈춘다
+        outage = self.status is not None and self.status["status"]["indicator"] != "none"
+        self.root.after(duration or (OUTAGE_TALK_MS if outage else TALK_MS), self.stop_talking, bubble)
+
+    def place_bubble(self):
+        # 클순이 머리 위(넘치면 발밑)에 둔다. 말하는 중에 끌어 옮기면 다시 불러 따라오게 한다
+        bubble = self.bubble
+        if bubble is None:
+            return
         left, top, right, _ = self.work_area()
         width, height = bubble.winfo_reqwidth(), bubble.winfo_reqheight()
         x = max(left, min(self.x + (self.images["talk"].width - width) // 2, right - width))
@@ -1405,11 +1417,6 @@ class Mascot:
         if y < top:
             y = self.y + HEIGHT + 4
         bubble.geometry(f"+{x}+{y}")
-        self.talking = True
-        self.show()
-        # 타이머는 root 에 건다: 말풍선에 걸면 클릭으로 먼저 닫을 때 destroy 가 콜백까지 지워 talk 에 멈춘다
-        outage = self.status is not None and self.status["status"]["indicator"] != "none"
-        self.root.after(duration or (OUTAGE_TALK_MS if outage else TALK_MS), self.stop_talking, bubble)
 
     def stop_talking(self, bubble):
         bubble.destroy()
@@ -1557,6 +1564,7 @@ class Mascot:
         self.x = event.x_root - round(image.width * DRAG_ANCHOR[0])
         self.y = event.y_root - round(HEIGHT * DRAG_ANCHOR[1])
         self.root.geometry(f"+{self.x}+{self.y}")
+        self.place_bubble()
         self.show()
 
     def on_release(self, event):
@@ -1571,6 +1579,7 @@ class Mascot:
         self.x = max(left, min(self.x, right - self.images["idle_1"].width))
         self.y = max(top, min(self.y, bottom - HEIGHT))
         self.root.geometry(f"+{self.x}+{self.y}")
+        self.place_bubble()
         self.show()
         self.save_config(x=self.x, y=self.y)
 
