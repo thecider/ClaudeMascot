@@ -188,6 +188,16 @@ class BLENDFUNCTION(ctypes.Structure):
 
 user32.UpdateLayeredWindow.argtypes = [wt.HWND, wt.HDC, ctypes.POINTER(wt.POINT), ctypes.POINTER(wt.SIZE), wt.HDC,
                                        ctypes.POINTER(wt.POINT), wt.COLORREF, ctypes.POINTER(BLENDFUNCTION), wt.DWORD]
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wt.DWORD), ("rcMonitor", wt.RECT), ("rcWork", wt.RECT), ("dwFlags", wt.DWORD)]
+
+
+user32.MonitorFromPoint.argtypes = [wt.POINT, wt.DWORD]
+user32.MonitorFromPoint.restype = wt.HMONITOR
+user32.GetMonitorInfoW.argtypes = [wt.HMONITOR, ctypes.POINTER(MONITORINFO)]
+MONITOR_DEFAULTTONEAREST = 2
 GWL_EXSTYLE = -20
 WS_EX_LAYERED = 0x80000
 ULW_ALPHA = 2
@@ -809,10 +819,11 @@ class Mascot:
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
         width, height = self.images["idle_1"].size
-        left, top, right, bottom = self.work_area()
-        # 저장 위치가 모니터 구성 변경 등으로 작업 영역 밖이면 안으로 끌어온다
-        self.x = max(left, min((config or {}).get("x", right - width - 16), right - width))
-        self.y = max(top, min((config or {}).get("y", bottom - height), bottom - height))
+        # 저장 위치가 있는 모니터에 둔다(처음엔 주 모니터 — 주 모니터는 늘 (0,0) 을 포함). 모니터를 뺐거나 영역 밖이면 가장 가까운 모니터 안으로 끌어온다
+        saved_x, saved_y = (config or {}).get("x"), (config or {}).get("y")
+        left, top, right, bottom = self.work_area(saved_x or 0, saved_y or 0)
+        self.x = max(left, min(right - width - 16 if saved_x is None else saved_x, right - width))
+        self.y = max(top, min(bottom - height if saved_y is None else saved_y, bottom - height))
         self.root.geometry(f"{width}x{height}+{self.x}+{self.y}")
         self.root.update()
         # tk 의 최상위 프레임 창을 레이어드 창으로 바꾼다: 이후 그림은 tk 가 아니라 UpdateLayeredWindow 가 그린다
@@ -882,9 +893,14 @@ class Mascot:
             self.root.after(5000, self.cleanup_update)  # 업데이트 직후면 옛 프로세스가 아직 .old 를 잡고 있을 수 있다
             self.root.after(UPDATE_FIRST_MS, self.poll_update)
 
-    def work_area(self):
-        rect = wt.RECT()
-        user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)  # SPI_GETWORKAREA
+    def work_area(self, x=None, y=None):
+        # 클순이 몸 가운데가 있는 모니터의 작업 영역(어느 모니터에도 없으면 가장 가까운 모니터). x 가 None 이면 지금 위치
+        if x is None:
+            x, y = self.x, self.y
+        info = MONITORINFO(cbSize=ctypes.sizeof(MONITORINFO))
+        monitor = user32.MonitorFromPoint(wt.POINT(x + self.images["idle_1"].width // 2, y + HEIGHT // 2), MONITOR_DEFAULTTONEAREST)
+        user32.GetMonitorInfoW(monitor, ctypes.byref(info))
+        rect = info.rcWork
         return rect.left, rect.top, rect.right, rect.bottom
 
     # 그리기
