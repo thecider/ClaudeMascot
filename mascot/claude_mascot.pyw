@@ -785,6 +785,7 @@ class Mascot:
         self.dragging = False  # 누른 채 CLICK_SLOP 넘게 움직였으면 끌기(drag 그림)
         self.bubble = None
         self.menu_open = False
+        self.walk_asked = False  # 「행동 > 걷기」로 걷는 중: 저절로 걷기를 꺼 두었어도 이번 걸음은 끝까지 걷는다
         self.state = "ok"  # 마지막으로 받은 서비스 상태: ok / maintenance / down (알림 판정용)
         self.seen_incidents = set()
         self.last_touch = time.monotonic()  # 마지막으로 클릭·끌기·쓰다듬기 한 때 (잠들기 판정)
@@ -836,6 +837,9 @@ class Mascot:
         self.feed_menu = tk.Menu(self.menu, tearoff=0)
         self.feed_menu.add_command(label="햄버거", command=self.feed)
         self.menu.add_cascade(label="식사 주기", menu=self.feed_menu)
+        self.action_menu = tk.Menu(self.menu, tearoff=0)
+        self.action_menu.add_command(label="걷기", command=self.walk_now)
+        self.menu.add_cascade(label="행동", menu=self.action_menu)
         self.menu.add_command(label="게임하기", command=self.play_game)
         self.weather_menu = tk.Menu(self.menu, tearoff=0)
         self.weather_menu.add_command(label="오늘 날씨", command=self.tell_weather)
@@ -1488,11 +1492,12 @@ class Mascot:
         self.root.after(random.randint(*WALK_EVERY_MS), self.maybe_walk)
 
     def can_walk(self):
-        return (self.walk_enabled.get() and not self.closing and self.bubble is None and self.press is None
+        return ((self.walk_enabled.get() or self.walk_asked) and not self.closing and self.bubble is None and self.press is None
                 and not self.menu_open and self.root.state() != "withdrawn")
 
     def start_walk(self):
-        if self.walking or not self.can_walk() or self.current() != self.idle:
+        # 저절로 걸을 때는 평상시 그림일 때만. 메뉴로 시키면 작업 중·잠·생일 그림이어도 걷는다(장애·피곤 등은 walk_tick 첫 칸에서 멈춘다)
+        if self.walking or not self.can_walk() or (self.current() != self.idle and not self.walk_asked):
             return
         # 작업 영역 끝에 붙어 있으면 반대로, 아니면 무작위 방향. 걷다 끝에 닿으면 돌아서서 남은 거리를 마저 걷는다(walk_tick)
         direction = random.choice([d for d in (1, -1) if self.walk_room(d) >= WALK_STEP] or [1])
@@ -1528,7 +1533,18 @@ class Mascot:
         left, _, right, _ = self.work_area()
         return right - self.images["idle_1"].width - self.x if direction > 0 else self.x - left
 
+    def walk_now(self):
+        # 「행동 > 걷기」: 기다리지 않고 바로 걷는다. 「걷기」(저절로 걷기)를 꺼 두었어도 이번 한 번은 걷는다. 먹던 중이면 그만 먹고 걷는다
+        self.stop_eat()
+        self.last_touch = time.monotonic()  # 자고 있었으면 깨운다
+        self.walk_asked = True
+        self.start_walk()
+        if self.walking is not None and not self.shown.startswith("walk"):  # 장애·점검·피곤 그림이 앞선다: 한 걸음도 떼지 않는다
+            self.stop_walk()
+        self.walk_asked = self.walking is not None  # 말하는 중처럼 걸을 수 없었으면 아무것도 안 한 것
+
     def stop_walk(self):
+        self.walk_asked = False
         if self.walking is None:
             return
         self.walking = None
