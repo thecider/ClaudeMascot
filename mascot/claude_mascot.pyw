@@ -52,6 +52,8 @@ IMAGE_DIR = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspat
 DATA_DIR = os.path.join(os.path.expanduser("~"), ".claude", "claude-status")
 USAGE_GLOB = os.path.join(DATA_DIR, "usage-*.json")
 CONFIG_PATH = os.path.join(DATA_DIR, "mascot.json")
+ERROR_LOG = os.path.join(DATA_DIR, "mascot_error.log")  # 조회 실패 이유(시각·주소·오류). 「날씨를 가져오지 못했어요」만으로는 원인을 알 수 없어서 남긴다
+ERROR_LOG_LINES = 50  # 최근 이만큼만 남긴다
 # 알림함: 아무 프로그램이나 *.json 하나 = 알림 하나 {title, text, kind(info/warn/error), link(파일·주소)} 를 넣는다.
 # 쓰는 중인 파일을 읽지 않게 다른 확장자로 쓴 뒤 .json 으로 이름을 바꾼다. 파일 하나를 덮어쓰는 notify.json 과 달리 보내는 곳이 여럿이어도 잃지 않는다
 INBOX_DIR = os.path.join(DATA_DIR, "inbox")
@@ -80,6 +82,7 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 WEATHER_FROM_HOUR = 5  # 이 시각부터 그날 처음 한가할 때 한 번 오늘 날씨를 말한다
 WEATHER_RETRY_S = 600  # 가져오지 못했으면 이만큼 뒤 다시
+WEATHER_MANUAL_RETRY_S = 2  # 메뉴로 물었다가 못 가져왔으면 이만큼 뒤 한 번 더
 RAIN_PERCENT = 50  # 비·눈 확률이 이 이상이면 우산 한마디
 # WMO 날씨 코드 → 말
 WEATHER_NAMES = {0: "맑음", 1: "대체로 맑음", 2: "구름 조금", 3: "흐림", 45: "안개", 48: "안개",
@@ -356,12 +359,29 @@ def launch_updated(exe, tag):
     subprocess.Popen([exe, "--updated", tag], env=env, close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
 
 
+def log_error(where, error):
+    # ERROR_LOG 끝에 한 줄. 주소는 쿼리(좌표 등)를 빼고 남긴다. 기록이 실패해도 하던 일은 그대로 간다
+    try:
+        try:
+            with open(ERROR_LOG, encoding="utf-8") as f:
+                lines = f.read().splitlines()[-(ERROR_LOG_LINES - 1):]
+        except OSError:
+            lines = []
+        lines.append(f"{local_now():%Y-%m-%d %H:%M:%S} {where} {type(error).__name__}: {error}")
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(ERROR_LOG, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
+
+
 def get_json(url, params):
-    # 조회 실패면 None
+    # 조회 실패면 None (이유는 ERROR_LOG 에)
     try:
         with urllib.request.urlopen(url + "?" + urllib.parse.urlencode(params), timeout=10) as response:
             return json.loads(response.read().decode("utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError) as error:
+        log_error(url, error)
         return None
 
 
@@ -390,7 +410,9 @@ def fetch_weather(place):
         return {"code": daily["weather_code"][0], "high": daily["temperature_2m_max"][0], "low": daily["temperature_2m_min"][0],
                 "rain": daily["precipitation_probability_max"][0], "now": data["current"]["temperature_2m"],
                 "feels_high": daily["apparent_temperature_max"][0], "feels_low": daily["apparent_temperature_min"][0]}
-    except (TypeError, KeyError, IndexError):
+    except (TypeError, KeyError, IndexError) as error:
+        if data is not None:  # 조회 실패(None)는 get_json 이 이미 남겼다: 응답 모양이 달라진 것만
+            log_error(WEATHER_URL + " (응답 모양)", error)
         return None
 
 
@@ -1021,7 +1043,16 @@ class Mascot:
     def request_weather(self, manual, greeting=None):
         self.weather_busy = True
         place = self.weather_place
-        threading.Thread(target=lambda: self.root.after(0, self.got_weather, place, fetch_weather(place), manual, greeting), daemon=True).start()
+
+        def fetch():
+            weather = fetch_weather(place)
+            # 메뉴로 물었으면 한 번 더 해 본다: 다시 누르면 되는 잠깐의 실패(타임아웃·서버 일시 오류)를 사용자가 보지 않게
+            if weather is None and manual:
+                time.sleep(WEATHER_MANUAL_RETRY_S)
+                weather = fetch_weather(place)
+            self.root.after(0, self.got_weather, place, weather, manual, greeting)
+
+        threading.Thread(target=fetch, daemon=True).start()
 
     def got_weather(self, place, weather, manual, greeting):
         # 메뉴로 물었으면 늘 말한다. 아침 날씨는 말풍선이 떠 있거나 숨겨졌으면 「최근 알림」에만 남긴다(오늘 몫은 끝)

@@ -23,6 +23,8 @@ cm.WALK_EVERY_MS = (600_000, 600_000)
 cm.MOOD_POLL_MS = 10 ** 7
 cm.GAME_TICK_MS = 10 ** 7
 cm.app_version = lambda: None
+cm.WEATHER_MANUAL_RETRY_S = 0  # 메뉴 날씨의 재시도 대기(run_weather_retry 가 따로 본다): 단계 간격(1.5초) 안에 끝나게
+cm.ERROR_LOG = os.path.join(tmp, "mascot_error.log")
 with open(cm.CONFIG_PATH, "w", encoding="utf-8") as f:
     json.dump({"x": 1000, "birthdays": {}}, f)
 
