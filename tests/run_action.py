@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+import types
 
 loader = importlib.machinery.SourceFileLoader("claude_mascot", sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mascot", "claude_mascot.pyw"))
 spec = importlib.util.spec_from_loader("claude_mascot", loader)
@@ -89,9 +90,40 @@ def s2():
     check("말하는 중이면 안 걷는다", m.walking is None and m.walk_asked is False)
     reset()
     m.status = {"status": {"indicator": "major"}}
-    x = m.x
+    m.show()
+    m.start_walk()
+    check("장애(아픈 그림)면 저절로는 안 걷는다", m.walking is None and m.shown == "sick", m.shown)
     walk_by_menu()
-    check("장애(아픈 그림)면 한 걸음도 안 걷는다", m.walking is None and m.x == x and m.shown == "sick", (m.shown, m.x, x))
+    check("장애여도 메뉴로 시키면 걷는다(11-16)", m.walking is not None and m.shown.startswith("walk"), m.shown)
+    x0[:] = [m.x]
+
+
+@step
+def s3():
+    check("장애 중 시킨 걸음도 계속 걷는다", m.x != x0[0] and m.walking is not None, (x0, m.x, m.shown))
+    m.stop_walk()
+    check("다 걸으면 아픈 그림으로 돌아간다", m.shown == "sick", m.shown)
+    m.feed()
+    check("장애여도 햄버거를 먹는다(11-16)", m.eating is not None and m.shown == cm.EAT_SEQUENCE[0][0], m.shown)
+
+
+@step
+def s4():
+    check("장애 중 먹기가 다음 칸으로 넘어간다", m.eating is not None and m.eating[0] > 0 and m.shown.startswith("eat"), (m.eating, m.shown))
+    m.stop_eat()
+    check("그만 먹으면 아픈 그림", m.shown == "sick", m.shown)
+    m.speak(body="비 와요", duration=10 ** 7, pose="weather_rain")
+    check("장애여도 날씨 말풍선은 날씨 그림(11-16)", m.shown == "weather_rain", m.shown)
+    m.stop_talking(m.bubble)
+    check("말풍선이 닫히면 아픈 그림", m.shown == "sick", m.shown)
+    m.speak(body="그냥 말하기", duration=10 ** 7)
+    check("그림 없는 말풍선은 장애 중 아픈 그림 유지", m.shown == "sick", m.shown)
+    m.speak(body="비 와요", duration=10 ** 7, pose="weather_rain")
+    cm.random.random = lambda: 1.0  # 얼음주머니 말고 한마디로
+    for x in (50, 70, 50, 70, 50):  # 머리 위를 좌우로 문지른다
+        m.on_motion(types.SimpleNamespace(x=x, y=10))
+    text = m.bubble.winfo_children()[0].cget("text") if m.bubble else ""
+    check("장애 중 날씨 그림이어도 쓰다듬으면 아플 때 대사(11-16)", text in cm.SICK_PET_LINES and m.shown == "sick_pet", (text, m.shown))
     reset()
 
 

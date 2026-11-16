@@ -13,6 +13,7 @@
 #   켜짐 = 받아서 크기·SHA-256 확인 → 한가할 때 exe 이름 바꿔치기 → 새 exe 로 다시 켜져 「업데이트했어요」. 「지금 업데이트 확인」으로 바로 확인.
 # 트레이 아이콘(pystray): 클릭 = 보이기, 오른쪽 클릭 = 보이기/숨기기/캐릭터/Windows 시작 시 실행/자동 업데이트/지금 업데이트 확인/완전히 종료. 완전히 끄는 길은 「완전히 종료」뿐이다.
 # 이미지: 장애 sick > 점검 maintenance > 사용량 90% 이상 tired > 평상시 idle_* 무작위(30초마다). 말하는 동안은 talk(단, 장애·점검·피곤 이미지는 말하는 중에도 유지).
+#   사람이 시킨 것(식사 주기·행동 > 걷기·날씨 같은 그림 있는 말풍선)은 아플 때도 하는 동안은 그 그림을 보이고, 끝나면 아픈 그림으로 돌아간다.
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
 # 사용량 알림: 5시간·주간 사용량이 75%·90% 를 넘는 순간, 경고했던 창이 초기화될 때 말한다. 오른쪽 클릭 「사용량 알림」으로 끈다.
 # 스케줄 알림(알림함): 다른 프로그램(예약 작업 등)이 inbox/ 에 넣은 JSON 을 하나씩 말하고 지운다. 오른쪽 클릭 「스케줄 알림」으로 끈다.
@@ -908,31 +909,39 @@ class Mascot:
         return rect.left, rect.top, rect.right, rect.bottom
 
     # 그리기
+    def mood(self):
+        # 장애 sick > 점검 maintenance > 피곤 tired, 아니면 None
+        return pick_mood(self.status["status"]["indicator"] if self.status else None, load_accounts(), datetime.datetime.now(datetime.timezone.utc))
+
     def current(self):
-        # 우선순위: 잘자요 > 끌기 > 아플 때 쓰다듬기(얼음주머니·sick_pet) > 장애·점검·피곤 > 걷기 > 햄버거 먹기 > 쓰다듬기 > 생일 축하 말풍선 > 말하기 > 작업 중 > 잠 > 생일 > 평상시
+        # 우선순위: 잘자요 > 끌기 > 아플 때 쓰다듬기(얼음주머니·sick_pet) > 시킨 걷기 > 햄버거 먹기 > 그림 있는 말풍선(날씨·알림) > 장애·점검·피곤
+        #   > 저절로 걷기 > 쓰다듬기 > 생일 축하 말풍선 > 말하기 > 작업 중 > 잠 > 생일 > 평상시
         # 작업 중에는 평상시 그림이 아니라서 걷기가 시작되지 않고 잠들지도 않는다
-        # 장애·점검·피곤 이미지는 말하는 중에도 유지한다: 아픈 모습이 바로 보여야 직관적이다. talk 는 평상시에 말할 때만
+        # 장애·점검·피곤 이미지는 그냥 말할 때·저절로 걸을 때도 유지한다: 아픈 모습이 바로 보여야 직관적이다. talk 는 평상시에 말할 때만
+        # 단 사람이 시킨 것(식사 주기·행동 > 걷기·날씨처럼 그림을 정한 말풍선)은 하는 동안 앞선다: 아파도 반응이 보여야 한다. 끝나면 아픈 그림으로 돌아간다
         # 끌기는 아플 때도 drag: 들려 가는 동안은 어미 고양이에게 물린 새끼처럼 평온한 얼굴로 보인다
         if self.closing:
             return "goodnight"
         if self.dragging:
             return "drag"
-        mood = pick_mood(self.status["status"]["indicator"] if self.status else None, load_accounts(), datetime.datetime.now(datetime.timezone.utc))
+        mood = self.mood()
         if mood == "sick" and self.petting:
             return self.ice_frame or "sick_pet"
-        if mood:
-            return mood
-        if self.walking:
+        if self.walking and (self.walk_asked or not mood):
             direction, _, frame = self.walking
             return WALK_FRAMES[frame] + ("_left" if direction < 0 else "")
         if self.eating:
             return EAT_SEQUENCE[self.eating[0]][0]
+        if self.talking and self.pose:
+            return self.pose
+        if mood:
+            return mood
         if self.petting:
             return "pet"
         if self.celebrating:
             return "birthday"
         if self.talking:
-            return self.pose or "talk"
+            return "talk"
         if self.working:
             return WORKING_SEQUENCE[self.working[0]][0]
         if time.monotonic() - self.last_touch >= SLEEP_MINUTES * 60:
@@ -1467,7 +1476,7 @@ class Mascot:
         if turns >= PET_STROKES:
             self.stroke = None
             self.last_touch = now
-            sick = self.current() == "sick"
+            sick = self.mood() == "sick"  # 그림이 아니라 상태로 본다: 아파도 먹기·날씨 말풍선 중에는 그림이 sick 이 아니다
             if sick and random.random() < ICE_CHANCE:
                 self.speak(body=ICE_LINE, duration=sum(ms for _, ms in ICE_FRAMES))
                 self.petting = True
@@ -1496,7 +1505,7 @@ class Mascot:
                 and not self.menu_open and self.root.state() != "withdrawn")
 
     def start_walk(self):
-        # 저절로 걸을 때는 평상시 그림일 때만. 메뉴로 시키면 작업 중·잠·생일 그림이어도 걷는다(장애·피곤 등은 walk_tick 첫 칸에서 멈춘다)
+        # 저절로 걸을 때는 평상시 그림일 때만. 메뉴로 시키면 작업 중·잠·생일·장애·피곤 그림이어도 걷는다
         if self.walking or not self.can_walk() or (self.current() != self.idle and not self.walk_asked):
             return
         # 작업 영역 끝에 붙어 있으면 반대로, 아니면 무작위 방향. 걷다 끝에 닿으면 돌아서서 남은 거리를 마저 걷는다(walk_tick)
@@ -1539,7 +1548,7 @@ class Mascot:
         self.last_touch = time.monotonic()  # 자고 있었으면 깨운다
         self.walk_asked = True
         self.start_walk()
-        if self.walking is not None and not self.shown.startswith("walk"):  # 장애·점검·피곤 그림이 앞선다: 한 걸음도 떼지 않는다
+        if self.walking is not None and not self.shown.startswith("walk"):  # 끌기 등 걷는 그림보다 앞서는 상태: 한 걸음도 떼지 않는다
             self.stop_walk()
         self.walk_asked = self.walking is not None  # 말하는 중처럼 걸을 수 없었으면 아무것도 안 한 것
 
@@ -1566,7 +1575,7 @@ class Mascot:
             self.stop_eat()
             return
         self.show()
-        if self.shown != EAT_SEQUENCE[eating[0]][0]:  # 장애·점검·피곤 등 먹는 그림보다 앞서는 상태가 됐다
+        if self.shown != EAT_SEQUENCE[eating[0]][0]:  # 끌기·잘자요 등 먹는 그림보다 앞서는 상태가 됐다
             self.stop_eat()
             return
         self.root.after(EAT_SEQUENCE[eating[0]][1], self.eat_tick, eating)
