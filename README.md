@@ -24,6 +24,7 @@ A tiny desktop character for Windows that tells you Claude's service status and 
 - **작업 중**(사용량 브리지 0.5.0 이상): Claude Code 가 일하는 동안 노트북을 두드립니다. 클릭하면 말풍선 맨 위에 「작업 중 2 · 대기 1」처럼 세션 현황이 나옵니다.
 - **사용량 알림**(사용량 브리지 필요): 5시간·주간 사용량이 75%·90% 를 넘는 순간 알려 주고, 경고했던 사용량이 초기화되면 「다시 쓸 수 있어요」라고 말합니다. 오른쪽 클릭 → **사용량 알림** 체크를 풀면 말하지 않습니다.
 - **스케줄 알림**: 예약 작업 같은 다른 프로그램이 알림함 폴더에 넣은 알림을 말합니다(아래 「스케줄 알림 보내기」). 오른쪽 클릭 → **스케줄 알림** 체크를 풀면 말하지 않습니다.
+- **예약 작업**: 오른쪽 클릭 → **예약 작업** 에 Windows 작업 스케줄러에 내가 만든 작업이 `✓ 이름  마지막 → 다음` 처럼 한 줄씩 나옵니다(✓ 성공 · ✗ 실패 · … 실행 중 · · 아직 안 돎). 누르면 설명과 마지막 결과·다음 실행을 말합니다. 최상위 폴더에서 작성자가 비어 있거나 나인 작업만 보입니다.
 - **최근 알림**: 오른쪽 클릭 → **최근 알림** 에 최근 10개가 남습니다. 누르면 그 세션으로 갑니다(마스코트를 다시 켜면 비워집니다).
 - **끌기**: 후드 뒷덜미를 잡혀 들린 채 원하는 곳으로 옮겨집니다. 위치는 기억합니다.
 - **쓰다듬기**: 버튼을 누르지 않은 채 머리 위에서 좌우로 문지르면 좋아합니다. 아플 때 쓰다듬으면 가끔 얼음주머니를 갈아 줍니다.
@@ -124,6 +125,7 @@ build.bat
 - **Working** (usage bridge 0.5.0+): while Claude Code works, the mascot types on a laptop. Click it to see the session count at the top of the bubble, e.g. "작업 중 2 · 대기 1" (2 working, 1 waiting).
 - **Usage alerts** (needs the usage bridge): speaks up the moment 5-hour or weekly usage passes 75% / 90%, and says "다시 쓸 수 있어요" (you can use it again) when a warned window resets. Uncheck right-click → **사용량 알림** (Usage alerts) to turn them off.
 - **Schedule notes**: speaks notes that other programs (scheduled tasks, scripts) drop into an inbox folder (see "Sending schedule notes" below). Uncheck right-click → **스케줄 알림** (Schedule notes) to turn them off.
+- **Scheduled tasks**: right-click → **예약 작업** (Scheduled tasks) lists the tasks you made in Windows Task Scheduler, one line each like `✓ name  last → next` (✓ succeeded · ✗ failed · … running · · not run yet). Click one to hear its description, last result and next run. Only tasks in the top folder whose author is empty or you are shown.
 - **Recent notes**: right-click → **최근 알림** (Recent notes) keeps the last 10; click one to jump to its session (cleared when the mascot restarts).
 - **Drag**: pick it up by the back of its hood and move it anywhere; the position is remembered.
 - **Pet**: rub left and right over its head without pressing a button. Pet it while it's sick and it sometimes gets a fresh ice bag.

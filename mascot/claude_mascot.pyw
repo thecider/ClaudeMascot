@@ -1,7 +1,7 @@
 # Claude Mascot: 바탕화면에 SD 캐릭터를 띄워 Claude 상태와 사용량에 반응한다 (Windows 전용).
 # 데이터: ~/.claude/claude-status/usage-<계정>.json (Claude Code 플러그인 usage-status-bridge 가 쓴다, 없으면 상태만), status.claude.com 공개 API.
 # 이미지(images/*.png, 투명 배경)는 Windows 레이어드 창으로 픽셀 단위 투명도를 살려 그린다(가장자리가 부드러운 그림이라 색 빼기 방식은 계단이 진다).
-# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/게임하기/날씨/걷기/작업 알림/스케줄 알림/사용량 알림/최근 알림/숨기기/완전히 종료).
+# 조작: 클릭 = 사용량 말하기(말풍선), 끌기 = 후드 뒷덜미를 잡혀 들린 drag 그림으로 이동(위치 기억), 오른쪽 클릭 = 메뉴(사용량 말하기/장애 상세 열기/식사 주기/게임하기/날씨/걷기/작업 알림/스케줄 알림/사용량 알림/예약 작업/최근 알림/숨기기/완전히 종료).
 # 날씨: 오른쪽 클릭 「날씨 > 위치 정하기」로 도시를 찾아 후보 중 고르면(기본은 안 정함 = 날씨 안 말함) 하루 한 번 5시 이후 처음 켜질 때·처음 한가할 때 인사와 함께 오늘 날씨,
 #   비·눈 확률이 높으면 우산 한마디. 「날씨 > 오늘 날씨」로 언제든 다시 묻는다. 날씨는 Open-Meteo(키 없음).
 #   날씨를 말하는 동안은 우산(비)·눈사람(눈)·귀마개와 장갑(체감 한파)·선풍기(체감 폭염) 그림으로 말한다.
@@ -17,6 +17,8 @@
 # 장애 알림: 장애 발생·새 사고·복구, 점검 시작·종료 때 클릭 없이 스스로 말풍선으로 알린다.
 # 사용량 알림: 5시간·주간 사용량이 75%·90% 를 넘는 순간, 경고했던 창이 초기화될 때 말한다. 오른쪽 클릭 「사용량 알림」으로 끈다.
 # 스케줄 알림(알림함): 다른 프로그램(예약 작업 등)이 inbox/ 에 넣은 JSON 을 하나씩 말하고 지운다. 오른쪽 클릭 「스케줄 알림」으로 끈다.
+# 예약 작업: 오른쪽 클릭 「예약 작업」 = 작업 스케줄러에 내가 만든 작업(최상위 폴더, 작성자가 비었거나 나)을 「✓ 이름  마지막 → 다음」 한 줄씩. 누르면 설명·결과를 말한다.
+#   등록해 두고 잊어버리는 작업을 눈에 보이게 하려고 둔다. 켤 때·오른쪽 클릭할 때 백그라운드에서 다시 읽는다.
 # 작업 알림(브리지가 notify.json 을 씀): Claude Code 턴이 끝나면 「<프로젝트> 작업 완료했어요!」와 답변 첫 줄,
 #   권한 확인·질문으로 사람의 답을 기다리면 waiting 그림으로 「<프로젝트> 확인이 필요해요!」, 오류로 끝나면 sick 그림으로 「작업이 실패했어요!」. 오른쪽 클릭 「작업 알림」으로 끈다.
 #   브리지가 세션마다 쓰는 상태(sessions/*.json)를 보고, 작업 중인 세션이 있으면 노트북 두드리는 그림(working_1~4)을 되풀이하고, 클릭 말풍선 맨 위에 「작업 중 2 · 대기 1」을 붙인다.
@@ -95,6 +97,14 @@ SNOW_CODES = {71, 73, 75, 77, 85, 86}
 WEATHER_FRAMES = ("weather_rain", "weather_snow", "weather_cold", "weather_hot")
 COLD_FEELS = -10  # 체감 최저가 이 이하면 귀마개·장갑
 HOT_FEELS = 33  # 체감 최고가 이 이상이면 선풍기
+# 예약 작업: 작업 스케줄러 최상위 폴더(\)의 작업을 PowerShell 로 읽는다(한 번에 2초쯤 걸려 백그라운드에서). 시각은 현지 시각 ISO, 출력은 UTF-8
+TASKS_SCRIPT = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+                "@(Get-ScheduledTask -TaskPath '\\' | ForEach-Object { $i = $_ | Get-ScheduledTaskInfo -ErrorAction SilentlyContinue; "
+                "[pscustomobject]@{name = $_.TaskName; author = $_.Author; description = $_.Description; state = [string]$_.State; "
+                "last = if ($i.LastRunTime) { $i.LastRunTime.ToString('s') } else { '' }; result = $i.LastTaskResult; "
+                "next = if ($i.NextRunTime) { $i.NextRunTime.ToString('s') } else { '' }} }) | ConvertTo-Json -Compress")
+TASK_RUNNING = 0x41301  # 작업 스케줄러 결과 코드: 지금 실행 중
+TASK_NEVER_RAN = 0x41303  # 아직 한 번도 안 돌았다
 
 HEIGHT = 160
 IDLE_MS = 30_000
@@ -435,6 +445,75 @@ def weather_speech(place, weather):
     if isinstance(weather["rain"], (int, float)) and weather["rain"] >= RAIN_PERCENT:
         lines.append(f"{'눈' if weather['code'] in SNOW_CODES else '비'} 올 확률 {weather['rain']}% — 우산 챙기세요!")
     return "\n".join(lines)
+
+
+def read_tasks_raw():
+    # TASKS_SCRIPT 출력(JSON 글자). 실패면 None (이유는 ERROR_LOG 에). 콘솔 창이 깜빡이지 않게 창 없이 띄운다
+    try:
+        done = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", TASKS_SCRIPT], capture_output=True,
+                              timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
+        if done.returncode != 0:
+            raise OSError(f"종료 코드 {done.returncode}: {done.stderr.decode('utf-8', 'replace').strip()[:200]}")
+        return done.stdout.decode("utf-8", "replace")
+    except (OSError, subprocess.SubprocessError) as error:
+        log_error("예약 작업", error)
+        return None
+
+
+def fetch_tasks():
+    # 내가 만든 예약 작업 [{name, description, state, last, result, next}] 이름 순서. 읽지 못하면 None
+    # 내가 만든 것 = 작성자가 비었거나(Register-ScheduledTask) 나(schtasks 는 「PC\이름」). 프로그램이 깐 작업은 회사 이름이 들어 있어 빠진다
+    text = read_tasks_raw()
+    if text is None:
+        return None
+    try:
+        tasks = json.loads(text) if text.strip() else []
+    except ValueError as error:
+        log_error("예약 작업 (응답 모양)", error)
+        return None
+    if isinstance(tasks, dict):  # 작업이 하나면 배열이 아니라 객체 하나로 온다
+        tasks = [tasks]
+    user = os.environ.get("USERNAME", "").lower()
+    mine = [t for t in tasks if isinstance(t, dict) and isinstance(t.get("name"), str)
+            and str(t.get("author") or "").rsplit("\\", 1)[-1].lower() in ("", user)]
+    return sorted(mine, key=lambda t: t["name"].lower())
+
+
+def task_time(text, now):
+    # 「15:11」, 「내일 09:00」, 「어제 22:00」, 그 밖은 「11-20 09:00」. 없거나 못 읽으면 None
+    try:
+        at = datetime.datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    day = {0: "", 1: "내일 ", -1: "어제 "}.get((at.date() - now.date()).days, f"{at:%m-%d} ")
+    return f"{day}{at:%H:%M}"
+
+
+def task_state(task):
+    # (메뉴 표시, 말) — 실행 중 …, 아직 안 돎 ·, 성공 ✓, 실패 ✗
+    result = task.get("result") if isinstance(task.get("result"), int) else 0
+    result &= 0xFFFFFFFF
+    if task.get("state") == "Running" or result == TASK_RUNNING:
+        return "…", "running"
+    if result == TASK_NEVER_RAN:
+        return "·", "never"
+    return ("✓", "ok") if result == 0 else ("✗", f"실패(0x{result:X})")
+
+
+def task_label(task, now):
+    # 메뉴 한 줄: 「✓ 이름  마지막 → 다음」
+    mark, kind = task_state(task)
+    last = None if kind == "never" else task_time(task.get("last"), now)
+    return f"{mark} {task['name']}  {last or '-'} → {task_time(task.get('next'), now) or '-'}"
+
+
+def task_speech(task, now):
+    # 이름 / 설명(있으면) / 「마지막 15:11 성공 · 다음 15:16」
+    _, kind = task_state(task)
+    last, nxt = task_time(task.get("last"), now), task_time(task.get("next"), now)
+    state = {"never": "아직 안 돌았어요", "running": f"지금 도는 중이에요 ({last} 시작)" if last else "지금 도는 중이에요",
+             "ok": f"마지막 {last} 성공"}.get(kind, f"마지막 {last} {kind}")
+    return "\n".join(filter(None, (task["name"], str(task.get("description") or "").strip(), f"{state} · 다음 {nxt or '없음'}")))
 
 
 def autostart_enabled():
@@ -838,6 +917,9 @@ class Mascot:
         self.weather_busy = False  # 날씨를 가져오는 중
         self.weather_retry = 0.0  # 아침 날씨를 못 가져왔으면 이 시각(monotonic)까지 다시 안 한다
         self.picker = None  # 열려 있는 위치 정하기 창
+        self.tasks = None  # 마지막으로 읽은 내 예약 작업 (fetch_tasks), 읽지 못했으면 None
+        self.tasks_loaded = False  # 한 번이라도 다 읽었나 (그 전에는 「불러오는 중」)
+        self.tasks_busy = False  # 읽는 중
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -876,6 +958,8 @@ class Mascot:
         self.menu.add_checkbutton(label="스케줄 알림", variable=self.inbox_enabled, command=lambda: self.save_config(inbox_notify=self.inbox_enabled.get()))
         self.usage_enabled = tk.BooleanVar(self.root, (config or {}).get("usage_notify", True))
         self.menu.add_checkbutton(label="사용량 알림", variable=self.usage_enabled, command=lambda: self.save_config(usage_notify=self.usage_enabled.get()))
+        self.tasks_menu = tk.Menu(self.menu, tearoff=0, postcommand=self.fill_tasks)
+        self.menu.add_cascade(label="예약 작업", menu=self.tasks_menu)
         self.history_menu = tk.Menu(self.menu, tearoff=0, postcommand=self.fill_history)
         self.menu.add_cascade(label="최근 알림", menu=self.history_menu)
         self.menu.add_command(label="숨기기", command=self.hide_window)
@@ -912,6 +996,7 @@ class Mascot:
         self.root.after(MOOD_POLL_MS, self.poll_mood)
         self.poll_status()
         self.poll_notify()
+        self.refresh_tasks()
         self.keep_on_top()
         self.root.after(1000, self.greet_on_start)
         self.root.after(random.randint(*WALK_EVERY_MS), self.maybe_walk)
@@ -1230,6 +1315,29 @@ class Mascot:
         for label, body, link in self.history:
             self.history_menu.add_command(label=label, command=lambda body=body, link=link: os.startfile(link) if link else self.speak(body=body))
 
+    def refresh_tasks(self):
+        # 예약 작업을 백그라운드에서 다시 읽는다(켤 때·오른쪽 클릭할 때). 메뉴는 그동안 지난번 목록을 보인다
+        if self.tasks_busy:
+            return
+        self.tasks_busy = True
+        threading.Thread(target=lambda: self.root.after(0, self.got_tasks, fetch_tasks()), daemon=True).start()
+
+    def got_tasks(self, tasks):
+        self.tasks, self.tasks_loaded, self.tasks_busy = tasks, True, False
+
+    def fill_tasks(self):
+        # 「예약 작업」을 펼칠 때마다 새로 채운다. 누르면 그 작업의 설명·마지막 결과·다음 실행을 말한다(실패면 아픈 그림)
+        self.tasks_menu.delete(0, "end")
+        empty = "(불러오는 중…)" if not self.tasks_loaded else "(불러오지 못했어요)" if self.tasks is None else "(없음)" if not self.tasks else None
+        if empty:
+            self.tasks_menu.add_command(label=empty, state="disabled")
+            return
+        now = local_now()
+        for task in self.tasks:
+            failed = task_state(task)[1].startswith("실패")
+            self.tasks_menu.add_command(label=task_label(task, now), command=lambda task=task, failed=failed: self.speak(
+                body=task_speech(task, local_now()), pose="sick" if failed else None))
+
     def fetch_status(self):
         try:
             with urllib.request.urlopen(STATUS_URL, timeout=10) as response:
@@ -1425,6 +1533,7 @@ class Mascot:
     def popup_menu(self, event):
         # tk_popup 은 메뉴가 닫힐 때까지 돌아오지 않지만 타이머는 계속 돈다: 그동안 keep_on_top 이 마스코트를 메뉴 위로 올리지 않게 막는다
         self.menu_open = True
+        self.refresh_tasks()
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
